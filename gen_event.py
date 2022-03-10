@@ -29,6 +29,7 @@ def calc_transform_matrix(cell_param, lattice_type=None):
     A[:, 2] = c_star
     return A
 
+
 class HKLMatcher:
     def __init__(self, hkls, qs, la, seed_len_tol, seed_angle_tol):
         self.hkls = hkls

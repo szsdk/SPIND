@@ -7,10 +7,9 @@ detector distance : 136.4028E-3  # in meters
 pixel size : 110.E-6  # in meters
 
 # reference generation parameters
-resolution cutoff: 4.5E-10  #  highest resolution for reference, in meters
+resolution cutoff: 4.5  #  highest resolution for reference, in A
 lattice type: "monoclinic"  # support monoclinic, orthorhombic
 centering: "C"  # centering type, optional, support I, A, B, C, P
-reference table: "spind_reference.h5"  # table filename
 
 # indexing parameters
 peak list directory: "peak_list"  
@@ -18,14 +17,19 @@ output directory: "output"
 sort by: "snr"  # peak list sort method, support snr, intensity
 seed pool size: 5  # generate seed from this pool. 5 is good for SFX
 refine cycles: 10  # refine indexing solution 
-seed length tolerance: 3.E+7  # in m^-1, depends on sample and exp. setup
+refine mode: "global"
+seed length tolerance: 1.5E+7  # in m^-1, depends on sample and exp. setup
 seed angle tolerance: 1.0  # in degrees
 seed hkl tolerance: 0.1  # seed hkl tolerence
 centering factor: 0.2  # centering weighting factor
 eval tolerance: 0.25  # pair peak criterion
 multi index: False  # try to index multiple crystal for single pattern?
+top solutions: 5
 # first event: 0  # first event for indeixng, optional
 # last event: 100  # last event for indexing, optional
 
 hkl constraint: False  # if apply strict hkl constraint, users must specify a hkl file.
 # hkl file: "sample.hkl"  # txt file including all possiable miller indices, optional
+#
+verbose: True
+number of try: 3
