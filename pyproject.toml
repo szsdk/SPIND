@@ -1,0 +1,7 @@
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.pytest.ini_options]
+log_cli = true
+log_cli_level = "CRITICAL"

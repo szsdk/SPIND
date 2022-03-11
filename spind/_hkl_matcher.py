@@ -1,5 +1,6 @@
-import numpy as np
 import numba
+import numpy as np
+
 from ._params import Params
 from ._utils import calc_transform_matrix
 
@@ -27,10 +28,10 @@ def get_alpha(al, bl, c, cl, d, dl, C1):
     s += n[1] ** 2
     n[2] = c[0] * d[1] - c[1] * d[0]
     s += n[2] ** 2
-    n /= s ** .5
+    n /= s ** 0.5
 
     x, y = A + B * cosC, B * sinC
-    rxy = (x**2 + y**2)**.5
+    rxy = (x ** 2 + y ** 2) ** 0.5
     cl = al / cl / rxy
     x *= cl
     y *= cl
@@ -40,15 +41,15 @@ def get_alpha(al, bl, c, cl, d, dl, C1):
 
     dl = bl / dl / rxy
     x = (B + A * cosC) * dl
-    y = - A * sinC * dl
+    y = -A * sinC * dl
     ans[0, 1] = (d[1] * n[2] - d[2] * n[1]) * y + x * d[0]
     ans[1, 1] = (d[2] * n[0] - d[0] * n[2]) * y + x * d[1]
     ans[2, 1] = (d[0] * n[1] - d[1] * n[0]) * y + x * d[2]
-    
+
     return ans
 
 
-@numba.jit(inline='always', cache=True)
+@numba.jit(inline="always", cache=True)
 def my_norm(a):
     return (a[0] ** 2 + a[1] ** 2 + a[2] ** 2) ** 0.5
 
@@ -62,7 +63,6 @@ def get_rot(a, ap):
     if (l0 < 1e-4) and (l1 < 1e-4):
         return np.eye(3)
 
-
     if l0 < 1e-3:
         axis = a[0]
     elif l1 < 1e-3:
@@ -74,7 +74,7 @@ def get_rot(a, ap):
             if abs(l1 - l0) < 1e-3:
                 axis = a[0] - a[1]
             else:
-                l1 = (d1[0] * d0[0] + d1[1] * d0[1] + d1[2] *d0[2]) / l0
+                l1 = (d1[0] * d0[0] + d1[1] * d0[1] + d1[2] * d0[2]) / l0
                 dl = l1 - l0
                 axis = l1 / dl * a[0] - l0 / dl * a[1]
                 # k0, k1 = l1 / dl, l0 / dl
@@ -89,7 +89,6 @@ def get_rot(a, ap):
         n0 = np.cross(axis, a[0])
         n1 = np.cross(axis, ap[0])
 
-
     cosC = n0 @ n1 / my_norm(n0) / my_norm(n1)
     if abs(cosC) > 1:
         cosC /= cosC
@@ -103,34 +102,38 @@ def get_rot(a, ap):
     q1 = sinA * axis[0]
     q2 = sinA * axis[1]
     q3 = sinA * axis[2]
-     
+
     # First row of the rotation matrix
     r00 = 2 * (q0 * q0 + q1 * q1) - 1
     r01 = 2 * (q1 * q2 - q0 * q3)
     r02 = 2 * (q1 * q3 + q0 * q2)
-     
+
     # Second row of the rotation matrix
     r10 = 2 * (q1 * q2 + q0 * q3)
     r11 = 2 * (q0 * q0 + q2 * q2) - 1
     r12 = 2 * (q2 * q3 - q0 * q1)
-     
+
     # Third row of the rotation matrix
     r20 = 2 * (q1 * q3 - q0 * q2)
     r21 = 2 * (q2 * q3 + q0 * q1)
     r22 = 2 * (q0 * q0 + q3 * q3) - 1
-     
+
     # 3x3 rotation matrix
-    return np.array([[r00, r01, r02],
-                     [r10, r11, r12],
-                     [r20, r21, r22]])
+    return np.array([[r00, r01, r02], [r10, r11, r12], [r20, r21, r22]])
 
 
 @numba.jit(boundscheck=False, nogil=True, cache=True)
-def _hkl_match_kernel(q12, q1s, q1ns, q1l, q2s, q2ns, q2l, ang_s, ang_e, A0_inv, seed_hkl_tol):
-    ref12 = np.empty((2, 3), np.float64)
-    al = (q12[0, 0] ** 2 + q12[1, 0]**2 + q12[2, 0]**2) ** .5
-    bl = (q12[0, 1] ** 2 + q12[1, 1]**2 + q12[2, 1]**2) ** .5
-    C1 = (q12[0, 0] * q12[0, 1] + q12[1, 0] * q12[1, 1] + q12[2, 0] * q12[2, 1]) / al / bl
+def _hkl_match_kernel(
+    q12, q1s, q1ns, q1l, q2s, q2ns, q2l, ang_s, ang_e, A0_inv, seed_hkl_tol
+):
+    # ref12 = np.empty((2, 3), np.float64)
+    al = (q12[0, 0] ** 2 + q12[1, 0] ** 2 + q12[2, 0] ** 2) ** 0.5
+    bl = (q12[0, 1] ** 2 + q12[1, 1] ** 2 + q12[2, 1] ** 2) ** 0.5
+    C1 = (
+        (q12[0, 0] * q12[0, 1] + q12[1, 0] * q12[1, 1] + q12[2, 0] * q12[2, 1])
+        / al
+        / bl
+    )
     if abs(C1) > 1:
         C1 /= C1
     C1 = np.arccos(C1)
@@ -261,8 +264,7 @@ def gen_hkls(p: Params):
     return hkls, qs
 
 
-
-def hkl_matcher(p:Params):
+def hkl_matcher(p: Params):
     hkls, qs = gen_hkls(p)
     la = np.linalg.norm(qs, axis=1)
     idx = np.argsort(la)
@@ -271,5 +273,5 @@ def hkl_matcher(p:Params):
         qs[idx],
         la[idx],
         seed_len_tol=p.seed_len_tol,
-        seed_angle_tol=p.seed_angle_tol
+        seed_angle_tol=p.seed_angle_tol,
     )

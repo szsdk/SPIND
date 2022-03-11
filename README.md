@@ -6,7 +6,7 @@ First, install some necessary tools. For CentOS users, just use the following co
 
 `sudo yum install -y git wget bzip2`
 
-Then download SPIND package, 
+Then download SPIND package,
 
 `git clone https://github.com/LiuLab-CSRC/indexing.git`
 
@@ -25,13 +25,13 @@ SPIND package has the following dependencies,
 * yaml
 * tqdm
 
-To make life easier, [anaconda](https://anaconda.org) is highly recommended for Python-related library management. 
+To make life easier, [anaconda](https://anaconda.org) is highly recommended for Python-related library management.
 
 Download `anaconda` for Python2.7 by
 
 `wget https://repo.continuum.io/archive/Anaconda2-5.0.1-Linux-x86_64.sh`
 
-Install anaconda, 
+Install anaconda,
 
 `bash Anaconda2-5.0.1-Linux-x86_64.sh`
 

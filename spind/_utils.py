@@ -17,7 +17,7 @@ PEAKS_DTYPE = np.dtype(
         ("coor", np.float64, 3),
         ("snr", np.float64),
         ("intensity", np.float64),
-        ("resolution", np.float64)
+        ("resolution", np.float64),
     ]
 )
 
@@ -60,13 +60,3 @@ def calc_transform_matrix(cell_param, lattice_type=None):
     A[:, 1] = b_star
     A[:, 2] = c_star
     return A
-
-
-def calc_angle(v1, v2):
-    l1, l2 = np.linalg.norm(v1), np.linalg.norm(v2)
-    if min(l1, l2) < 1e-15:  # 0 vector
-        return 0.0
-    cos_value = v1.dot(v2) / (l1 * l2)
-    cos_value = np.clip(cos_value, -1.0, 1.0)
-    angle = np.rad2deg(np.arcccos(cos_value))
-    return angle

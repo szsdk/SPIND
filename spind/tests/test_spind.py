@@ -1,12 +1,13 @@
 import numpy as np
 import pytest
-import spind
 import quaternion as quat
+
+import spind
 
 
 @pytest.fixture()
 def param():
-    return spind.params('config.yml')
+    return spind.params("config.yml")
 
 
 def test_gen_hkls(param: spind.Params):
@@ -17,15 +18,15 @@ def test_hkl_matcher(param: spind.Params):
     spind.hkl_matcher(param)
 
 
-def gen_peaks(param, r:quat.quaternion):
+def gen_peaks(param, r: quat.quaternion):
     _, qs = spind.gen_hkls(param)
     qs = qs[3::1000] * 1e10
     qs = quat.rotate_vectors(r, qs)
     ans = np.empty(qs.shape[0], dtype=spind.PEAKS_DTYPE)
-    ans['coor'] = qs
-    ans['intensity'] = 1.0
-    ans['snr'] = 1.0
-    ans['resolution'] = 1 / np.linalg.norm(qs, axis=1)
+    ans["coor"] = qs
+    ans["intensity"] = 1.0
+    ans["snr"] = 1.0
+    ans["resolution"] = 1 / np.linalg.norm(qs, axis=1)
     return ans
 
 

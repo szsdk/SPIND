@@ -37,15 +37,17 @@ Options:
     -v --verbose            Whether enable verbose output.
 """
 
+import operator
+import os
+from glob import glob
+from itertools import repeat
+
 # from mpi4py import MPI
 # from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Pool
-import numpy as np
-import operator
-from itertools import repeat
-import os
-from glob import glob
+
 import click
+import numpy as np
 import rich
 
 # from index import index
@@ -94,11 +96,10 @@ def write_summary(results, directory):
     )
 
 
-
-
-
 def worker_run(param, hklmatcher, peaks, num_threads):
-    transform_matrix = spind.calc_transform_matrix(param.lattice_constants, param.lattice_type)
+    transform_matrix = spind.calc_transform_matrix(
+        param.lattice_constants, param.lattice_type
+    )
     inv_transform_matrix = np.linalg.inv(transform_matrix)
     solutions = spind.index(
         peaks,
@@ -118,18 +119,18 @@ def worker_run(param, hklmatcher, peaks, num_threads):
         nb_top=param.nb_top,
         multi_index=param.multi_index,
         verbose=param.verbose,
-        num_threads=num_threads
+        num_threads=num_threads,
     )
     return solutions
 
 
 def _peaks_from_stdin(inp):
-    num_peaks = int.from_bytes(os.read(inp, 4), byteorder='little', signed=False)
+    num_peaks = int.from_bytes(os.read(inp, 4), byteorder="little", signed=False)
     peaks = np.empty(num_peaks, dtype=spind.PEAKS_DTYPE)
     for i in range(num_peaks):
         a = np.frombuffer(os.read(inp, 32), "<f8")
-        peaks[i]['coor'] = a[:3]
-        peaks['intensity'] = a[3]
+        peaks[i]["coor"] = a[:3]
+        peaks["intensity"] = a[3]
     return peaks
 
 
@@ -158,32 +159,39 @@ def _output_solutions(solutions, output):
 def main(inp, config, output, num_processes, num_threads, crystfel):
     if crystfel:
         if num_processes != 1:
-            raise ValueError(
-                "When stdin (-) is used, `num-processes` has to be 1."
-            )
+            raise ValueError("When stdin (-) is used, `num-processes` has to be 1.")
         inp = int(inp)
         output = int(output)
 
     param = spind.params(config)
     # collect and sort jobs
 
-    transform_matrix = spind.calc_transform_matrix(param.lattice_constants, param.lattice_type)
+    transform_matrix = spind.calc_transform_matrix(
+        param.lattice_constants, param.lattice_type
+    )
     hklmatcher = spind.hkl_matcher(
-        param.min_res, transform_matrix, param.centering,
-        param.seed_len_tol, param.seed_angle_tol)
+        param.min_res,
+        transform_matrix,
+        param.centering,
+        param.seed_len_tol,
+        param.seed_angle_tol,
+    )
 
     rich.print(param)
     # peaks = spind.load_peaks(peaks, 'snr', param.min_res)
     if crystfel:
-        solutions = [
-            worker_run(param, hklmatcher, _peaks_from_stdin(inp), num_threads)
-            
-        ]
+        solutions = [worker_run(param, hklmatcher, _peaks_from_stdin(inp), num_threads)]
     elif num_processes == 1:
         peak_files = glob("%s/*.txt" % inp)
         peak_files.sort(key=lambda x: int(x.split("-")[-1].split(".")[0]))
         solutions = [
-            worker_run(param, hklmatcher, spind.load_peaks(pf, 'snr', param.min_res), num_threads) for pf in peak_files
+            worker_run(
+                param,
+                hklmatcher,
+                spind.load_peaks(pf, "snr", param.min_res),
+                num_threads,
+            )
+            for pf in peak_files
         ]
     else:
         peak_files = glob("%s/*.txt" % inp)
@@ -195,11 +203,11 @@ def main(inp, config, output, num_processes, num_threads, crystfel):
                     repeat(param),
                     repeat(hklmatcher),
                     map(
-                        lambda pf: spind.load_peaks(pf, 'snr', param.min_res),
-                        peak_files
+                        lambda pf: spind.load_peaks(pf, "snr", param.min_res),
+                        peak_files,
                     ),
-                    repeat(num_threads)
-                )
+                    repeat(num_threads),
+                ),
             )
     _output_solutions(solutions, output)
 

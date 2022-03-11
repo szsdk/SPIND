@@ -1,7 +1,8 @@
 import itertools
+from pathlib import Path
+
 import numpy as np
 import yaml
-from pathlib import Path
 
 
 def calc_transform_matrix(cell_param, lattice_type=None):
@@ -77,8 +78,8 @@ def hkl_matcher(config):
         valid_idx = np.linalg.norm(qs, axis=1) < q_cutoff
         # valid_idx = []
         # for i in range(len(qs)):
-            # if np.linalg.norm(qs[i]) <= q_cutoff:
-                # valid_idx.append(i)
+        # if np.linalg.norm(qs[i]) <= q_cutoff:
+        # valid_idx.append(i)
         hkls = hkls[valid_idx]
 
         # apply systematic absence
@@ -124,8 +125,9 @@ def hkl_matcher(config):
         qs[idx],
         la[idx],
         seed_len_tol=float(config["seed length tolerance"]),
-        seed_angle_tol=float(config["seed angle tolerance"])
+        seed_angle_tol=float(config["seed angle tolerance"]),
     )
+
 
 with open("config.yml") as fp:
     config = yaml.safe_load(fp)

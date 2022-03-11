@@ -1,16 +1,15 @@
 #!/usr/bin/env python
 
+import time
+from concurrent.futures import ThreadPoolExecutor
 from itertools import combinations
+from math import pi
 
+import numba
 import numpy as np
 from numpy.linalg import norm
-import numba
 from scipy.optimize import fmin_cg, minimize
-from math import pi, cos, sin
-import time
 
-from concurrent.futures import ThreadPoolExecutor
-from ._utils import calc_angle, calc_transform_matrix
 from ._params import Params
 
 
@@ -18,26 +17,27 @@ class Solution:
     """
     Indexing solution.
     """
-    def __init__(self, nb_peaks=0, centering='P'):
+
+    def __init__(self, nb_peaks=0, centering="P"):
         self.nb_peaks = nb_peaks
-        self.centering=centering
+        self.centering = centering
         # raw results
         self.pair_ids = None
-        self.match_rate = 0.
-        self.total_score = 0.
+        self.match_rate = 0.0
+        self.total_score = 0.0
         self.transform_matrix = None
         # corrected results
         self.true_pair_ids = None
         self.true_pair_dist = np.inf
-        self.true_match_rate = 0.
-        self.true_total_score = 0.
+        self.true_match_rate = 0.0
+        self.true_total_score = 0.0
         # refined results
         self.transform_matrix_refined = None
         self.pair_dist_refined = np.inf
         self.time_stat = dict()
         self.rotation_matrix = None
 
-    def correct_match_rate(self, qs, miller_set=None, centering_weight=0.):
+    def correct_match_rate(self, qs, miller_set=None, centering_weight=0.0):
         """
         Correct match rate and pair peaks with miller set constraint.
         :param qs: peak coordinates in fourier space, Nx3 array.
@@ -45,7 +45,7 @@ class Solution:
         :param centering_weight: weight of centering score.
         :return: None
         """
-        dtype = 'int8'
+        dtype = "int8"
         if miller_set is None:  # dummy case
             self.true_match_rate = self.match_rate
             self.true_pair_ids = self.pair_ids
@@ -56,17 +56,19 @@ class Solution:
             miller_set = miller_set.astype(dtype)
             true_pair_ids = []
             for pair_id in self.pair_ids:
-                if norm(miller_set - self.rhkls[pair_id].astype(dtype),
-                        axis=1).min() == 0:
+                if (
+                    norm(miller_set - self.rhkls[pair_id].astype(dtype), axis=1).min()
+                    == 0
+                ):
                     true_pair_ids.append(pair_id)
             true_match_rate = float(len(true_pair_ids)) / self.nb_peaks
             eXYZs = np.abs(self.transform_matrix.dot(self.rhkls.T) - qs.T).T
             true_pair_dist = norm(eXYZs, axis=1)[true_pair_ids].mean()
             true_pair_hkls = self.rhkls[true_pair_ids].astype(dtype)
             centering_score = calc_centering_score(
-                true_pair_hkls, centering=self.centering)
-            true_total_score = centering_score * centering_weight \
-                               + true_match_rate
+                true_pair_hkls, centering=self.centering
+            )
+            true_total_score = centering_score * centering_weight + true_match_rate
             self.true_pair_ids = true_pair_ids
             self.true_match_rate = true_match_rate
             self.true_pair_dist = true_pair_dist
@@ -74,14 +76,14 @@ class Solution:
 
 
 def rad2deg(rad):
-    return float(rad) / pi * 180.
+    return float(rad) / pi * 180.0
 
 
 def deg2rad(deg):
-    return float(deg) / 180. * pi
+    return float(deg) / 180.0 * pi
 
 
-def index(peaks, table, p: Params, num_threads: int=1, verbose=False):
+def index(peaks, table, p: Params, num_threads: int = 1, verbose=False):
     """
     Perform indexing on given peaks.
     :param peaks: peak info, including pos_x, pos_y, total_intensity, snr,
@@ -96,54 +98,52 @@ def index(peaks, table, p: Params, num_threads: int=1, verbose=False):
     # inv_transform_matrix = np.linalg.inv(transform_matrix)
 
     for i in range(p.nb_try if p.multi_index else 1):
-        solution = index_once(peaks, table,
-                              p.transform_matrix, p.inv_transform_matrix,
-                              seed_pool_size=p.seed_pool_size,
-                              seed_len_tol=p.seed_len_tol,
-                              seed_angle_tol=p.seed_angle_tol,
-                              seed_hkl_tol=p.seed_hkl_tol,
-                              eval_hkl_tol=p.eval_hkl_tol,
-                              centering=p.centering,
-                              centering_weight=p.centering_weight,
-                              refine_mode=p.refine_mode,
-                              refine_cycles=p.refine_cycles,
-                              miller_set=p.miller_set,
-                              nb_top=p.nb_top,
-                              unindexed_peak_ids=unindexed_peak_ids,
-                              num_threads=num_threads)
-        if solution.total_score == 0.:
+        solution = index_once(
+            peaks,
+            table,
+            p.transform_matrix,
+            p.inv_transform_matrix,
+            seed_pool_size=p.seed_pool_size,
+            seed_len_tol=p.seed_len_tol,
+            seed_angle_tol=p.seed_angle_tol,
+            seed_hkl_tol=p.seed_hkl_tol,
+            eval_hkl_tol=p.eval_hkl_tol,
+            centering=p.centering,
+            centering_weight=p.centering_weight,
+            refine_mode=p.refine_mode,
+            refine_cycles=p.refine_cycles,
+            miller_set=p.miller_set,
+            nb_top=p.nb_top,
+            unindexed_peak_ids=unindexed_peak_ids,
+            num_threads=num_threads,
+        )
+        if solution.total_score == 0.0:
             continue
         solutions.append(solution)
-        unindexed_peak_ids = list(
-            set(unindexed_peak_ids) - set(solution.pair_ids)
-        )
+        unindexed_peak_ids = list(set(unindexed_peak_ids) - set(solution.pair_ids))
         unindexed_peak_ids.sort()
     solutions_ = []
     for solution in solutions:
-        print('%-20s: %-d' % ('peak num', solution.nb_peaks))
-        print('%-20s: %-3f' % ('total score', solution.total_score))
+        print("%-20s: %-d" % ("peak num", solution.nb_peaks))
+        print("%-20s: %-3f" % ("total score", solution.total_score))
         if verbose:
-            print('%-20s: %-3f'
-                  % ('match rate', solution.match_rate))
-            print('%-20s: %-3d'
-                  % ('matched peak num', len(solution.pair_ids)))
-            print('%-20s: %-3e'
-                  % ('matched dist', solution.pair_dist_refined))
-            print('%-20s: %-3f'
-                  % ('centering score', solution.centering_score))
+            print("%-20s: %-3f" % ("match rate", solution.match_rate))
+            print("%-20s: %-3d" % ("matched peak num", len(solution.pair_ids)))
+            print("%-20s: %-3e" % ("matched dist", solution.pair_dist_refined))
+            print("%-20s: %-3f" % ("centering score", solution.centering_score))
             print(solution.time_stat)
-            print(sum([i for _, i, _ in solution.time_stat['evaluation individual']]))
+            print(sum([i for _, i, _ in solution.time_stat["evaluation individual"]]))
             # print('%-20s: %-3f sec'
-                  # % ('t1/table lookup', solution.time_stat['table lookup']))
+            # % ('t1/table lookup', solution.time_stat['table lookup']))
             # print('%-20s: %-3f sec'
-                  # % ('t2/evaluation', solution.time_stat['evaluation']))
+            # % ('t2/evaluation', solution.time_stat['evaluation']))
             # print('%-20s: %-3f sec'
-                  # % ('t3/correction', solution.time_stat['correction']))
+            # % ('t3/correction', solution.time_stat['correction']))
             # print('%-20s: %-3f sec'
-                  # % ('t4/refinement', solution.time_stat['refinement']))
+            # % ('t4/refinement', solution.time_stat['refinement']))
             # print('%-20s: %-3f sec'
-                  # % ('t0/total', solution.time_stat['total']))
-        print('=' * 50)
+            # % ('t0/total', solution.time_stat['total']))
+        print("=" * 50)
 
         solutions_.append(solution)
     return solutions_
@@ -221,7 +221,10 @@ def eval_best_solution(
     Rs, seed_errors, hklss, eval_hkl_tol=0.25, centering="P", centering_weight=0.0
 ):
     best_solution_raw = eval_solution_kernel(
-        hklss, eval_hkl_tol=eval_hkl_tol, centering=centering, centering_weight=centering_weight
+        hklss,
+        eval_hkl_tol=eval_hkl_tol,
+        centering=centering,
+        centering_weight=centering_weight,
     )
     if best_solution_raw is None:
         best_solution = None
@@ -253,20 +256,25 @@ def eval_best_solution(
     return best_solution
 
 
-def index_once(peaks, hklmatcher, transform_matrix, inv_transform_matrix,
-               seed_pool_size=5,
-               seed_len_tol=0.003,
-               seed_angle_tol=3.0,
-               seed_hkl_tol=0.1,
-               eval_hkl_tol=0.25,
-               centering='P',
-               centering_weight=0.,
-               refine_mode='global',
-               refine_cycles=10,
-               miller_set=None,
-               nb_top=5,
-               unindexed_peak_ids=None,
-               num_threads=1):
+def index_once(
+    peaks,
+    hklmatcher,
+    transform_matrix,
+    inv_transform_matrix,
+    seed_pool_size=5,
+    seed_len_tol=0.003,
+    seed_angle_tol=3.0,
+    seed_hkl_tol=0.1,
+    eval_hkl_tol=0.25,
+    centering="P",
+    centering_weight=0.0,
+    refine_mode="global",
+    refine_cycles=10,
+    miller_set=None,
+    nb_top=5,
+    unindexed_peak_ids=None,
+    num_threads=1,
+):
     """
     Perform index once.
     :param peaks: peak info, including pos_x, pos_y, total_intensity, snr,
@@ -289,23 +297,24 @@ def index_once(peaks, hklmatcher, transform_matrix, inv_transform_matrix,
     :return: best indexing solution.
     """
 
-    qs = peaks['coor'] * 1e-10
+    qs = peaks["coor"] * 1e-10
 
     time_stat = {
-        'evaluation': -1.,
-        'evaluation individual': [],
-        'correction': -1.,
-        'refinement': -1.,
-        'total': -1.,
+        "evaluation": -1.0,
+        "evaluation individual": [],
+        "correction": -1.0,
+        "refinement": -1.0,
+        "total": -1.0,
     }
 
     t_total0 = time.time()
     if unindexed_peak_ids is None:
         unindexed_peak_ids = list(range(len(peaks)))
-    seed_pool = unindexed_peak_ids[:min(seed_pool_size, len(unindexed_peak_ids))]
+    seed_pool = unindexed_peak_ids[: min(seed_pool_size, len(unindexed_peak_ids))]
     good_solutions = []
     # collect good solutions
     t0 = time.time()
+
     def _thread_worker(seed_pair):
         t_iter = time.time()
         q1, q2 = qs[seed_pair, :]
@@ -321,11 +330,12 @@ def index_once(peaks, hklmatcher, transform_matrix, inv_transform_matrix,
             centering_weight=centering_weight,
         )
         return (seed_pair, t_eval, Rs.shape[0]), solution
+
     with ThreadPoolExecutor(max_workers=num_threads) as executor:
         gs = executor.map(_thread_worker, combinations(seed_pool, 2))
     good_solutions = []
     for seed_pair, s in gs:
-        time_stat['evaluation individual'].append((seed_pair))
+        time_stat["evaluation individual"].append((seed_pair))
         if s is not None:
             good_solutions.append(s)
 
@@ -333,7 +343,7 @@ def index_once(peaks, hklmatcher, transform_matrix, inv_transform_matrix,
         best_solution = max(good_solutions, key=lambda x: x.total_score)
     else:
         best_solution = None
-    time_stat['evaluation'] = time.time() - t0
+    time_stat["evaluation"] = time.time() - t0
 
     # refine best solution if exists
     if best_solution is None:
@@ -344,23 +354,25 @@ def index_once(peaks, hklmatcher, transform_matrix, inv_transform_matrix,
     else:
         # refine best solution
         t0 = time.time()
-        best_solution.transform_matrix = best_solution.rotation_matrix.dot(transform_matrix)
+        best_solution.transform_matrix = best_solution.rotation_matrix.dot(
+            transform_matrix
+        )
         eXYZs = np.abs(
             best_solution.transform_matrix.dot(best_solution.rhkls.T) - qs.T
         ).T  # Fourier space error between peaks and predicted spots
         dists = norm(eXYZs, axis=1)
-        best_solution.pair_dist = dists[best_solution.pair_ids].mean()  # average distance between matched peaks and the correspoding predicted spots
+        best_solution.pair_dist = dists[
+            best_solution.pair_ids
+        ].mean()  # average distance between matched peaks and the correspoding predicted spots
 
-        refine_solution(best_solution, qs,
-                        mode=refine_mode,
-                        nb_cycles=refine_cycles)
-        time_stat['refinement'] = time.time() - t0
-        time_stat['total'] = time.time() - t_total0
+        refine_solution(best_solution, qs, mode=refine_mode, nb_cycles=refine_cycles)
+        time_stat["refinement"] = time.time() - t0
+        time_stat["total"] = time.time() - t_total0
         best_solution.time_stat = time_stat
         return best_solution
 
 
-def refine_solution(solution, qs, mode='global', nb_cycles=10):
+def refine_solution(solution, qs, mode="global", nb_cycles=10):
     """
     Refine indexing solution.
     :param solution: indexing solution.
@@ -373,27 +385,28 @@ def refine_solution(solution, qs, mode='global', nb_cycles=10):
     rhkls = solution.rhkls
     pair_ids = solution.pair_ids
 
-    if mode == 'alternative':
+    if mode == "alternative":
+
         def _func(x, *argv):  # objective function
             asx, bsx, csx, asy, bsy, csy, asz, bsz, csz = x
             h, k, l, qx, qy, qz = argv
-            r1 = (asx * h + bsx * k + csx * l - qx)
-            r2 = (asy * h + bsy * k + csy * l - qy)
-            r3 = (asz * h + bsz * k + csz * l - qz)
-            return r1 ** 2. + r2 ** 2. + r3 ** 2.
+            r1 = asx * h + bsx * k + csx * l - qx
+            r2 = asy * h + bsy * k + csy * l - qy
+            r3 = asz * h + bsz * k + csz * l - qz
+            return r1 ** 2.0 + r2 ** 2.0 + r3 ** 2.0
 
         def _grad(x, *argv):  # gradient function
             asx, bsx, csx, asy, bsy, csy, asz, bsz, csz = x
             h, k, l, qx, qy, qz = argv
-            r1 = (asx * h + bsx * k + csx * l - qx)
-            r2 = (asy * h + bsy * k + csy * l - qy)
-            r3 = (asz * h + bsz * k + csz * l - qz)
-            g_asx, g_bsx, g_csx = 2. * h * r1, 2. * k * r1, 2. * l * r1
-            g_asy, g_bsy, g_csy = 2. * h * r2, 2. * k * r2, 2. * l * r2
-            g_asz, g_bsz, g_csz = 2. * h * r3, 2. * k * r3, 2. * l * r3
-            return np.array([g_asx, g_bsx, g_csx,
-                             g_asy, g_bsy, g_csy,
-                             g_asz, g_bsz, g_csz])
+            r1 = asx * h + bsx * k + csx * l - qx
+            r2 = asy * h + bsy * k + csy * l - qy
+            r3 = asz * h + bsz * k + csz * l - qz
+            g_asx, g_bsx, g_csx = 2.0 * h * r1, 2.0 * k * r1, 2.0 * l * r1
+            g_asy, g_bsy, g_csy = 2.0 * h * r2, 2.0 * k * r2, 2.0 * l * r2
+            g_asz, g_bsz, g_csz = 2.0 * h * r3, 2.0 * k * r3, 2.0 * l * r3
+            return np.array(
+                [g_asx, g_bsx, g_csx, g_asy, g_bsy, g_csy, g_asz, g_bsz, g_csz]
+            )
 
         # alternative refinement
         for i in range(nb_cycles):
@@ -402,33 +415,22 @@ def refine_solution(solution, qs, mode='global', nb_cycles=10):
                 rhkl = rhkls[pair_ids[j]]
                 q = qs[pair_ids[j]]
                 args = (rhkl[0], rhkl[1], rhkl[2], q[0], q[1], q[2])
-                try:
-                    res = fmin_cg(_func, x0, fprime=_grad, args=args, disp=0)
-                    transform_matrix_refined = res.reshape(3, 3)
-                except:
-                    pass
-    elif mode == 'global':
+                res = fmin_cg(_func, x0, fprime=_grad, args=args, disp=0)
+                transform_matrix_refined = res.reshape(3, 3)
+    elif mode == "global":
         _rhkls = rhkls[solution.pair_ids]
         _qs = qs[solution.pair_ids]
 
         def _func(x):
-            asx, bsx, csx, asy, bsy, csy, asz, bsz, csz = x
-            _A = np.array([
-                [asx, bsx, csx],
-                [asy, bsy, csy],
-                [asz, bsz, csz]
-            ])
+            _A = x.reshape(3, 3)
             return np.linalg.norm(_A.dot(_rhkls.T).T - _qs, axis=1).mean()
 
         # global refinement
         x0 = transform_matrix_refined.reshape(-1)
-        try:
-            res = minimize(_func, x0, method='CG', options={'disp': False})
-            transform_matrix_refined = res.x.reshape(3, 3)
-        except:
-            pass
+        res = minimize(_func, x0, method="CG", options={"disp": False})
+        transform_matrix_refined = res.x.reshape(3, 3)
     else:
-        raise ValueError('Not supported refine mode: %s' % mode)
+        raise ValueError("Not supported refine mode: %s" % mode)
 
     # refinement results
     eXYZs = np.abs(transform_matrix_refined.dot(rhkls.T) - qs.T).T
@@ -443,11 +445,16 @@ def refine_solution(solution, qs, mode='global', nb_cycles=10):
     return
 
 
-def eval_solution(solution, qs, inv_transform_matrix, seed_pair,
-                  eval_hkl_tol=0.25,
-                  centering='P',
-                  centering_weight=0.,
-                  unindexed_peak_ids=None):
+def eval_solution(
+    solution,
+    qs,
+    inv_transform_matrix,
+    seed_pair,
+    eval_hkl_tol=0.25,
+    centering="P",
+    centering_weight=0.0,
+    unindexed_peak_ids=None,
+):
     """
     Evaluate indexing solution.
     :param solution: indexing solution.
@@ -487,53 +494,7 @@ def eval_solution(solution, qs, inv_transform_matrix, seed_pair,
     return
 
 
-def calc_rotation_matrix(mob_v1, mob_v2, ref_v1, ref_v2):
-    """
-    Calculate rotation matrix R, thus R.dot(ref_vx) ~ mob_vx.
-    :param mob_v1: first mobile vector.
-    :param mob_v2: second mobile vector.
-    :param ref_v1: first reference vector.
-    :param ref_v2: second reference vector.
-    :return: rotation matrix R.
-    """
-    mob_v1, mob_v2 = np.float32(mob_v1), np.float32(mob_v2)
-    ref_v1, ref_v2 = np.float32(ref_v1), np.float32(ref_v2)
-    # rotate reference vector plane to  mobile plane
-    mob_norm = np.cross(mob_v1, mob_v2)  # norm vector of mobile vectors
-    ref_norm = np.cross(ref_v1, ref_v2)  # norm vector of reference vectors
-    if min(norm(mob_norm), norm(ref_norm)) == 0.:
-        return np.identity(3)  # return dummy matrix if co-linear
-    axis = np.cross(ref_norm, mob_norm)
-    angle = calc_angle(ref_norm, mob_norm, norm(ref_norm), norm(mob_norm))
-    R1 = axis_angle_to_rotation_matrix(axis, angle)
-    rot_ref_v1, rot_ref_v2 = R1.dot(ref_v1), R1.dot(ref_v2)
-    # rotate reference vectors to mobile vectors approximately
-    angle1 = calc_angle(rot_ref_v1, mob_v1, norm(rot_ref_v1), norm(mob_v1))
-    angle2 = calc_angle(rot_ref_v2, mob_v2, norm(rot_ref_v2), norm(mob_v2))
-    angle = (angle1 + angle2) * 0.5
-    axis = np.cross(rot_ref_v1, mob_v1)  # important!!
-    R2 = axis_angle_to_rotation_matrix(axis, angle)
-    R = R2.dot(R1)
-    return R
-
-
-def axis_angle_to_rotation_matrix(axis, angle):
-    """
-    Calculate rotation matrix from axis/angle form.
-    :param axis: axis vector with 3 elements.
-    :param angle: angle in degree.
-    :return: rotation matrix R.
-    """
-    x, y, z = axis / norm(axis)
-    angle = deg2rad(angle)
-    c, s = cos(angle), sin(angle)
-    R = [[c+x**2.*(1-c), x*y*(1-c)-z*s, x*z*(1-c)+y*s],
-         [y*x*(1-c)+z*s, c+y**2.*(1-c), y*z*(1-c)-x*s],
-         [z*x*(1-c)-y*s, z*y*(1-c)+x*s, c+z**2.*(1-c)]]
-    return np.array(R)
-
-
-def calc_centering_score(pair_hkls, centering='P'):
+def calc_centering_score(pair_hkls, centering="P"):
     """
     Calculate centering score.
     :param pair_hkls: hkl indices of pair peaks, Nx3 array.
@@ -542,31 +503,33 @@ def calc_centering_score(pair_hkls, centering='P'):
     """
     nb_pairs = len(pair_hkls)
     if nb_pairs == 0:
-        centering_score = 0.
-    elif centering == 'A':  # k+l=2n
+        centering_score = 0.0
+    elif centering == "A":  # k+l=2n
         nb_A_peaks = ((pair_hkls[:, 1] + pair_hkls[:, 2]) % 2 == 0).sum()
         A_ratio = float(nb_A_peaks) / float(nb_pairs)
-        centering_score = 2 * A_ratio - 1.  # range from 0-1
-    elif centering == 'B':  # h+l=2n
+        centering_score = 2 * A_ratio - 1.0  # range from 0-1
+    elif centering == "B":  # h+l=2n
         nb_B_peaks = ((pair_hkls[:, 0] + pair_hkls[:, 2]) % 2 == 0).sum()
         B_ratio = float(nb_B_peaks) / float(nb_pairs)
-        centering_score = 2 * B_ratio - 1.  # range from 0-1
-    elif centering == 'C':  # h+k=2n
+        centering_score = 2 * B_ratio - 1.0  # range from 0-1
+    elif centering == "C":  # h+k=2n
         nb_C_peaks = ((pair_hkls[:, 0] + pair_hkls[:, 1]) % 2 == 0).sum()
         C_ratio = float(nb_C_peaks) / float(nb_pairs)
-        centering_score = 2 * C_ratio - 1.  # range from 0-1
-    elif centering == 'I':  # h+k+l=2n
+        centering_score = 2 * C_ratio - 1.0  # range from 0-1
+    elif centering == "I":  # h+k+l=2n
         nb_I_peaks = (np.sum(pair_hkls, axis=1) % 2 == 0).sum()
         I_ratio = float(nb_I_peaks) / float(nb_pairs)
-        centering_score = 2 * I_ratio - 1.  # range from 0-1
-    elif centering == 'P':
+        centering_score = 2 * I_ratio - 1.0  # range from 0-1
+    elif centering == "P":
         nb_A_peaks = ((pair_hkls[:, 1] + pair_hkls[:, 2]) % 2 == 0).sum()
         nb_B_peaks = ((pair_hkls[:, 0] + pair_hkls[:, 2]) % 2 == 0).sum()
         nb_C_peaks = ((pair_hkls[:, 0] + pair_hkls[:, 1]) % 2 == 0).sum()
         nb_I_peaks = (np.sum(pair_hkls, axis=1) % 2 == 0).sum()
-        centering_score = 2. * (1 - float(
-            max(nb_A_peaks, nb_B_peaks, nb_C_peaks, nb_I_peaks)
-        ) / float(nb_pairs))
+        centering_score = 2.0 * (
+            1
+            - float(max(nb_A_peaks, nb_B_peaks, nb_C_peaks, nb_I_peaks))
+            / float(nb_pairs)
+        )
     else:
-        raise ValueError('Not supported centering type: %s' % centering)
+        raise ValueError("Not supported centering type: %s" % centering)
     return centering_score

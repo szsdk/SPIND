@@ -19,8 +19,8 @@ setuptools.setup(
     ],
     # scripts=["bin/spind"],
     entry_points={
-        'console_scripts': [
-            'spind = bin.spind_cmd:main',
+        "console_scripts": [
+            "spind = bin.spind_cmd:main",
         ],
     },
     include_package_data=True,

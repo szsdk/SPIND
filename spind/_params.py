@@ -1,7 +1,9 @@
+from collections import namedtuple
+from pathlib import Path
+
 import numpy as np
 import yaml
-from pathlib import Path
-from collections import namedtuple
+
 from ._utils import calc_transform_matrix
 
 Params = namedtuple(
@@ -25,7 +27,7 @@ Params = namedtuple(
         "nb_try",
         "transform_matrix",
         "inv_transform_matrix",
-        "miller_set"
+        "miller_set",
     ],
 )
 
@@ -79,8 +81,7 @@ def params(config):
         raise ValueError()
 
     transform_matrix = calc_transform_matrix(
-        config["cell parameters"],
-        config["lattice type"]
+        config["cell parameters"], config["lattice type"]
     )
     inv_transform_matrix = np.linalg.inv(transform_matrix)
 
@@ -104,5 +105,5 @@ def params(config):
         nb_try=int(config["number of try"]),
         transform_matrix=transform_matrix,
         inv_transform_matrix=inv_transform_matrix,
-        miller_set = None
+        miller_set=None,
     )

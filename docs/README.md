@@ -24,7 +24,7 @@ Then perform indexing using `SPIND.py` script.
 
 `python SPIND.py config.yml`
 
-All options and parameters are specified in a configuration file. 
+All options and parameters are specified in a configuration file.
 
 ```
 # configuration example
@@ -44,11 +44,11 @@ centering: "C"  # centering type, optional, support I, A, B, C, P
 reference table: "spind_reference.h5"  # table filename
 
 # indexing parameters
-peak list directory: "peak_list"  
-output directory: "output" 
+peak list directory: "peak_list"
+output directory: "output"
 sort by: "snr"  # peak list sort method, support snr, intensity
 seed pool size: 5  # generate seed from this pool. 5 is good for SFX
-refine cycles: 10  # refine indexing solution 
+refine cycles: 10  # refine indexing solution
 seed length tolerance: 3.E+7  # in m^-1, depends on sample and exp. setup
 seed angle tolerance: 1.0  # in degrees
 seed hkl tolerance: 0.1  # seed hkl tolerence

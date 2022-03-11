@@ -1,4 +1,4 @@
-from ._utils import calc_transform_matrix, PEAKS_DTYPE
+from ._hkl_matcher import gen_hkls, hkl_matcher
 from ._index import index
-from ._hkl_matcher import hkl_matcher, gen_hkls
-from ._params import params, Params
+from ._params import Params, params
+from ._utils import PEAKS_DTYPE, calc_transform_matrix
