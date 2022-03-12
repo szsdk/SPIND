@@ -77,7 +77,7 @@ def index(peaks, hklmatcher, p: Params, num_threads: int = 1):
 
 
 @numba.jit(boundscheck=False, nogil=True, cache=True)
-def eval_solution_kernel(hklss, eval_hkl_tol=0.25, centering="P", centering_weight=0.0):
+def eval_solution_kernel(hklss, eval_hkl_tol=0.25, centering="P", centering_weight=0.0):  # pragma: no cover
     nb_peaks = hklss.shape[1]
     max_total_error = 0.0
     for hkl_idx in range(hklss.shape[0]):
@@ -359,54 +359,6 @@ def refine_solution(sol, qs, mode="global", nb_cycles=10):
     sol_r.transform_matrix = transform_matrix_refined
     sol_r.pair_dist = pair_dist
     return sol_r
-
-
-def eval_solution(
-    solution,
-    qs,
-    inv_transform_matrix,
-    seed_pair,
-    eval_hkl_tol=0.25,
-    centering="P",
-    centering_weight=0.0,
-    unindexed_peak_ids=None,
-):
-    """
-    Evaluate indexing solution.
-    :param solution: indexing solution.
-    :param qs: q vectors of peaks.
-    :param inv_transform_matrix: inverse of transform matrix A: inv(A).
-    :param seed_pair: 2 indices of seed pair.
-    :param eval_hkl_tol: hkl tolerance for paired peaks.
-    :param centering: centering type.
-    :param centering_weight: weight of centering score.
-    :param unindexed_peak_ids: indices of unindexed peaks.
-    :return:
-    """
-    # calculate hkl indices
-    R = solution.rotation_matrix
-    R_inv = np.linalg.inv(R)
-    hkls = inv_transform_matrix.dot(R_inv.dot(qs.T)).T
-    rhkls = np.round(hkls)
-    ehkls = np.abs(hkls - rhkls)
-    solution.hkls = hkls
-    solution.rhkls = rhkls
-    solution.ehkls = ehkls
-    # find indices of pair peaks
-    pair_ids = np.where(np.max(ehkls, axis=1) < eval_hkl_tol)[0].tolist()
-    pair_ids = list(set(pair_ids) & (set(unindexed_peak_ids)))
-    nb_pairs = len(pair_ids)
-    match_rate = float(nb_pairs) / float(solution.nb_peaks)
-    solution.pair_ids = np.where(pair_ids)[0]
-    solution.match_rate = match_rate
-    # centering score
-    pair_hkls = rhkls.astype(int)[pair_ids]
-    centering_score = calc_centering_score(pair_hkls, centering=centering)
-    solution.centering_score = centering_score
-    # error / score
-    solution.seed_error = ehkls[seed_pair, :].max()
-    solution.total_score = centering_score * centering_weight + match_rate
-    return
 
 
 def calc_centering_score(pair_hkls, centering="P"):

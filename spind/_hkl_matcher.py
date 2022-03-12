@@ -6,7 +6,7 @@ from ._utils import calc_transform_matrix
 
 
 @numba.jit(boundscheck=False, cache=True)
-def get_alpha(al, bl, c, cl, d, dl, C1):
+def get_alpha(al, bl, c, cl, d, dl, C1):  # pragma: no cover
     n = np.empty(3, np.float64)
     ans = np.empty((3, 2), np.float64)
 
@@ -50,12 +50,12 @@ def get_alpha(al, bl, c, cl, d, dl, C1):
 
 
 @numba.jit(inline="always", cache=True)
-def my_norm(a):
+def my_norm(a):  # pragma: no cover
     return (a[0] ** 2 + a[1] ** 2 + a[2] ** 2) ** 0.5
 
 
 @numba.jit(boundscheck=False, cache=True)
-def get_rot(a, ap):
+def get_rot(a, ap):   # pragma: no cover
     d0 = ap[0] - a[0]
     d1 = ap[1] - a[1]
     l0 = my_norm(d0)
@@ -125,7 +125,7 @@ def get_rot(a, ap):
 @numba.jit(boundscheck=False, nogil=True, cache=True)
 def _hkl_match_kernel(
     q12, q1s, q1ns, q1l, q2s, q2ns, q2l, ang_s, ang_e, A0_inv, seed_hkl_tol
-):
+):   # pragma: no cover
     # ref12 = np.empty((2, 3), np.float64)
     al = (q12[0, 0] ** 2 + q12[1, 0] ** 2 + q12[2, 0] ** 2) ** 0.5
     bl = (q12[0, 1] ** 2 + q12[1, 1] ** 2 + q12[2, 1] ** 2) ** 0.5

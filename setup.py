@@ -17,7 +17,6 @@ setuptools.setup(
         "rich",
         "pyyaml",
     ],
-    # scripts=["bin/spind"],
     entry_points={
         "console_scripts": [
             "spind = bin.spind_cmd:main",
