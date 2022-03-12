@@ -118,7 +118,6 @@ def worker_run(param, hklmatcher, peaks, num_threads):
         refine_cycles=param.refine_cycles,
         nb_top=param.nb_top,
         multi_index=param.multi_index,
-        verbose=param.verbose,
         num_threads=num_threads,
     )
     return solutions
@@ -166,16 +165,7 @@ def main(inp, config, output, num_processes, num_threads, crystfel):
     param = spind.params(config)
     # collect and sort jobs
 
-    transform_matrix = spind.calc_transform_matrix(
-        param.lattice_constants, param.lattice_type
-    )
-    hklmatcher = spind.hkl_matcher(
-        param.min_res,
-        transform_matrix,
-        param.centering,
-        param.seed_len_tol,
-        param.seed_angle_tol,
-    )
+    hklmatcher = spind.hkl_matcher(param)
 
     rich.print(param)
     # peaks = spind.load_peaks(peaks, 'snr', param.min_res)

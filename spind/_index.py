@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 
+import copy
 import time
 from concurrent.futures import ThreadPoolExecutor
 from itertools import combinations
-from math import pi
 
 import numba
 import numpy as np
@@ -11,79 +11,45 @@ from numpy.linalg import norm
 from scipy.optimize import fmin_cg, minimize
 
 from ._params import Params
+from ._solution import Solution
 
 
-class Solution:
+def correct_match_rate(sol, qs, miller_set=None, centering_weight=0.0):
     """
-    Indexing solution.
+    Correct match rate and pair peaks with miller set constraint.
+    :param qs: peak coordinates in fourier space, Nx3 array.
+    :param miller_set: possible hkl indices, Nx3 array.
+    :param centering_weight: weight of centering score.
+    :return: None
     """
-
-    def __init__(self, nb_peaks=0, centering="P"):
-        self.nb_peaks = nb_peaks
-        self.centering = centering
-        # raw results
-        self.pair_ids = None
-        self.match_rate = 0.0
-        self.total_score = 0.0
-        self.transform_matrix = None
-        # corrected results
-        self.true_pair_ids = None
-        self.true_pair_dist = np.inf
-        self.true_match_rate = 0.0
-        self.true_total_score = 0.0
-        # refined results
-        self.transform_matrix_refined = None
-        self.pair_dist_refined = np.inf
-        self.time_stat = dict()
-        self.rotation_matrix = None
-
-    def correct_match_rate(self, qs, miller_set=None, centering_weight=0.0):
-        """
-        Correct match rate and pair peaks with miller set constraint.
-        :param qs: peak coordinates in fourier space, Nx3 array.
-        :param miller_set: possible hkl indices, Nx3 array.
-        :param centering_weight: weight of centering score.
-        :return: None
-        """
-        dtype = "int8"
-        if miller_set is None:  # dummy case
-            self.true_match_rate = self.match_rate
-            self.true_pair_ids = self.pair_ids
-            eXYZs = np.abs(self.transform_matrix.dot(self.rhkls.T) - qs.T).T
-            self.true_pair_dist = norm(eXYZs, axis=1)[self.true_pair_ids].mean()
-            self.true_total_score = self.total_score
-        else:
-            miller_set = miller_set.astype(dtype)
-            true_pair_ids = []
-            for pair_id in self.pair_ids:
-                if (
-                    norm(miller_set - self.rhkls[pair_id].astype(dtype), axis=1).min()
-                    == 0
-                ):
-                    true_pair_ids.append(pair_id)
-            true_match_rate = float(len(true_pair_ids)) / self.nb_peaks
-            eXYZs = np.abs(self.transform_matrix.dot(self.rhkls.T) - qs.T).T
-            true_pair_dist = norm(eXYZs, axis=1)[true_pair_ids].mean()
-            true_pair_hkls = self.rhkls[true_pair_ids].astype(dtype)
-            centering_score = calc_centering_score(
-                true_pair_hkls, centering=self.centering
-            )
-            true_total_score = centering_score * centering_weight + true_match_rate
-            self.true_pair_ids = true_pair_ids
-            self.true_match_rate = true_match_rate
-            self.true_pair_dist = true_pair_dist
-            self.true_total_score = true_total_score
+    dtype = "int8"
+    sol_c = copy.deepcopy(sol)
+    if miller_set is None:  # dummy case
+        sol_c.match_rate = sol.match_rate
+        sol_c.pair_ids = sol.pair_ids
+        eXYZs = np.abs(sol.transform_matrix.dot(sol.rhkls.T) - qs.T).T
+        sol_c.pair_dist = norm(eXYZs, axis=1)[sol_c.pair_ids].mean()
+        sol_c.total_score = sol.total_score
+    else:
+        miller_set = miller_set.astype(dtype)
+        true_pair_ids = []
+        for pair_id in sol.pair_ids:
+            if norm(miller_set - sol.rhkls[pair_id].astype(dtype), axis=1).min() == 0:
+                true_pair_ids.append(pair_id)
+        true_match_rate = float(len(true_pair_ids)) / sol.nb_peaks
+        eXYZs = np.abs(sol.transform_matrix.dot(sol.rhkls.T) - qs.T).T
+        true_pair_dist = norm(eXYZs, axis=1)[true_pair_ids].mean()
+        true_pair_hkls = sol.rhkls[true_pair_ids].astype(dtype)
+        centering_score = calc_centering_score(true_pair_hkls, centering=sol.centering)
+        true_total_score = centering_score * centering_weight + true_match_rate
+        sol_c.pair_ids = true_pair_ids
+        sol_c.match_rate = true_match_rate
+        sol_c.pair_dist = true_pair_dist
+        sol_c.total_score = true_total_score
+    return sol_c
 
 
-def rad2deg(rad):
-    return float(rad) / pi * 180.0
-
-
-def deg2rad(deg):
-    return float(deg) / 180.0 * pi
-
-
-def index(peaks, table, p: Params, num_threads: int = 1, verbose=False):
+def index(peaks, hklmatcher, p: Params, num_threads: int = 1):
     """
     Perform indexing on given peaks.
     :param peaks: peak info, including pos_x, pos_y, total_intensity, snr,
@@ -94,26 +60,11 @@ def index(peaks, table, p: Params, num_threads: int = 1, verbose=False):
     solutions = []
     unindexed_peak_ids = list(range(len(peaks)))
 
-    # transform_matrix = calc_transform_matrix(p.lattice_constants, p.lattice_type)
-    # inv_transform_matrix = np.linalg.inv(transform_matrix)
-
     for i in range(p.nb_try if p.multi_index else 1):
         solution = index_once(
             peaks,
-            table,
-            p.transform_matrix,
-            p.inv_transform_matrix,
-            seed_pool_size=p.seed_pool_size,
-            seed_len_tol=p.seed_len_tol,
-            seed_angle_tol=p.seed_angle_tol,
-            seed_hkl_tol=p.seed_hkl_tol,
-            eval_hkl_tol=p.eval_hkl_tol,
-            centering=p.centering,
-            centering_weight=p.centering_weight,
-            refine_mode=p.refine_mode,
-            refine_cycles=p.refine_cycles,
-            miller_set=p.miller_set,
-            nb_top=p.nb_top,
+            hklmatcher,
+            p,
             unindexed_peak_ids=unindexed_peak_ids,
             num_threads=num_threads,
         )
@@ -122,31 +73,7 @@ def index(peaks, table, p: Params, num_threads: int = 1, verbose=False):
         solutions.append(solution)
         unindexed_peak_ids = list(set(unindexed_peak_ids) - set(solution.pair_ids))
         unindexed_peak_ids.sort()
-    solutions_ = []
-    for solution in solutions:
-        print("%-20s: %-d" % ("peak num", solution.nb_peaks))
-        print("%-20s: %-3f" % ("total score", solution.total_score))
-        if verbose:
-            print("%-20s: %-3f" % ("match rate", solution.match_rate))
-            print("%-20s: %-3d" % ("matched peak num", len(solution.pair_ids)))
-            print("%-20s: %-3e" % ("matched dist", solution.pair_dist_refined))
-            print("%-20s: %-3f" % ("centering score", solution.centering_score))
-            print(solution.time_stat)
-            print(sum([i for _, i, _ in solution.time_stat["evaluation individual"]]))
-            # print('%-20s: %-3f sec'
-            # % ('t1/table lookup', solution.time_stat['table lookup']))
-            # print('%-20s: %-3f sec'
-            # % ('t2/evaluation', solution.time_stat['evaluation']))
-            # print('%-20s: %-3f sec'
-            # % ('t3/correction', solution.time_stat['correction']))
-            # print('%-20s: %-3f sec'
-            # % ('t4/refinement', solution.time_stat['refinement']))
-            # print('%-20s: %-3f sec'
-            # % ('t0/total', solution.time_stat['total']))
-        print("=" * 50)
-
-        solutions_.append(solution)
-    return solutions_
+    return solutions
 
 
 @numba.jit(boundscheck=False, nogil=True, cache=True)
@@ -259,19 +186,7 @@ def eval_best_solution(
 def index_once(
     peaks,
     hklmatcher,
-    transform_matrix,
-    inv_transform_matrix,
-    seed_pool_size=5,
-    seed_len_tol=0.003,
-    seed_angle_tol=3.0,
-    seed_hkl_tol=0.1,
-    eval_hkl_tol=0.25,
-    centering="P",
-    centering_weight=0.0,
-    refine_mode="global",
-    refine_cycles=10,
-    miller_set=None,
-    nb_top=5,
+    p: Params,
     unindexed_peak_ids=None,
     num_threads=1,
 ):
@@ -310,7 +225,7 @@ def index_once(
     t_total0 = time.time()
     if unindexed_peak_ids is None:
         unindexed_peak_ids = list(range(len(peaks)))
-    seed_pool = unindexed_peak_ids[: min(seed_pool_size, len(unindexed_peak_ids))]
+    seed_pool = unindexed_peak_ids[: min(p.seed_pool_size, len(unindexed_peak_ids))]
     good_solutions = []
     # collect good solutions
     t0 = time.time()
@@ -318,16 +233,16 @@ def index_once(
     def _thread_worker(seed_pair):
         t_iter = time.time()
         q1, q2 = qs[seed_pair, :]
-        Rs, seed_errors = hklmatcher(q1, q2, inv_transform_matrix, seed_hkl_tol)
+        Rs, seed_errors = hklmatcher(q1, q2, p.inv_transform_matrix, p.seed_hkl_tol)
         t_eval = time.time() - t_iter
-        hklss = np.einsum("mp,npq,iq->nmi", qs, Rs, inv_transform_matrix)
+        hklss = np.einsum("mp,npq,iq->nmi", qs, Rs, p.inv_transform_matrix)
         solution = eval_best_solution(
             Rs,
             seed_errors,
             hklss,
-            eval_hkl_tol=eval_hkl_tol,
-            centering=centering,
-            centering_weight=centering_weight,
+            eval_hkl_tol=p.eval_hkl_tol,
+            centering=p.centering,
+            centering_weight=p.centering_weight,
         )
         return (seed_pair, t_eval, Rs.shape[0]), solution
 
@@ -335,7 +250,7 @@ def index_once(
         gs = executor.map(_thread_worker, combinations(seed_pool, 2))
     good_solutions = []
     for seed_pair, s in gs:
-        time_stat["evaluation individual"].append((seed_pair))
+        time_stat["evaluation individual"].append(seed_pair)
         if s is not None:
             good_solutions.append(s)
 
@@ -355,7 +270,7 @@ def index_once(
         # refine best solution
         t0 = time.time()
         best_solution.transform_matrix = best_solution.rotation_matrix.dot(
-            transform_matrix
+            p.transform_matrix
         )
         eXYZs = np.abs(
             best_solution.transform_matrix.dot(best_solution.rhkls.T) - qs.T
@@ -365,25 +280,27 @@ def index_once(
             best_solution.pair_ids
         ].mean()  # average distance between matched peaks and the correspoding predicted spots
 
-        refine_solution(best_solution, qs, mode=refine_mode, nb_cycles=refine_cycles)
+        best_solution = refine_solution(
+            best_solution, qs, mode=p.refine_mode, nb_cycles=p.refine_cycles
+        )
         time_stat["refinement"] = time.time() - t0
         time_stat["total"] = time.time() - t_total0
         best_solution.time_stat = time_stat
         return best_solution
 
 
-def refine_solution(solution, qs, mode="global", nb_cycles=10):
+def refine_solution(sol, qs, mode="global", nb_cycles=10):
     """
     Refine indexing solution.
-    :param solution: indexing solution.
+    :param sol: indexing solution.
     :param qs: q vectors of peaks.
     :param mode: minimization mode, global or alternative.
     :param nb_cycles: number of refine cycles.
     :return: indexing solution with refined results.
     """
-    transform_matrix_refined = solution.transform_matrix.copy()
-    rhkls = solution.rhkls
-    pair_ids = solution.pair_ids
+    transform_matrix_refined = sol.transform_matrix.copy()
+    rhkls = sol.rhkls
+    pair_ids = sol.pair_ids
 
     if mode == "alternative":
 
@@ -418,8 +335,8 @@ def refine_solution(solution, qs, mode="global", nb_cycles=10):
                 res = fmin_cg(_func, x0, fprime=_grad, args=args, disp=0)
                 transform_matrix_refined = res.reshape(3, 3)
     elif mode == "global":
-        _rhkls = rhkls[solution.pair_ids]
-        _qs = qs[solution.pair_ids]
+        _rhkls = rhkls[sol.pair_ids]
+        _qs = qs[sol.pair_ids]
 
         def _func(x):
             _A = x.reshape(3, 3)
@@ -436,13 +353,12 @@ def refine_solution(solution, qs, mode="global", nb_cycles=10):
     eXYZs = np.abs(transform_matrix_refined.dot(rhkls.T) - qs.T).T
     pair_dist = norm(eXYZs, axis=1)[pair_ids].mean()
 
-    if pair_dist > solution.pair_dist:  # keep original solution
-        solution.transform_matrix_refined = solution.transform_matrix
-        solution.pair_dist_refined = solution.pair_dist
-    else:
-        solution.transform_matrix_refined = transform_matrix_refined
-        solution.pair_dist_refined = pair_dist
-    return
+    if pair_dist > sol.pair_dist:  # keep original sol
+        return sol
+    sol_r = copy.deepcopy(sol)
+    sol_r.transform_matrix = transform_matrix_refined
+    sol_r.pair_dist = pair_dist
+    return sol_r
 
 
 def eval_solution(
@@ -482,7 +398,6 @@ def eval_solution(
     nb_pairs = len(pair_ids)
     match_rate = float(nb_pairs) / float(solution.nb_peaks)
     solution.pair_ids = np.where(pair_ids)[0]
-    solution.nb_pairs = nb_pairs
     solution.match_rate = match_rate
     # centering score
     pair_hkls = rhkls.astype(int)[pair_ids]

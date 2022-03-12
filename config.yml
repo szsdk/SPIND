@@ -12,8 +12,6 @@ lattice type: "monoclinic"  # support monoclinic, orthorhombic
 centering: "C"  # centering type, optional, support I, A, B, C, P
 
 # indexing parameters
-peak list directory: "peak_list"
-output directory: "output"
 sort by: "snr"  # peak list sort method, support snr, intensity
 seed pool size: 5  # generate seed from this pool. 5 is good for SFX
 refine cycles: 10  # refine indexing solution

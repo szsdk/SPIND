@@ -187,6 +187,9 @@ class HKLMatcher:
         self.seed_len_tol = seed_len_tol
         self.seed_angle_tol = seed_angle_tol
 
+    def as_dict(self):
+        return {"hkls": self.hkls, "qs": self.qs}
+
     def __call__(self, q1, q2, A0_inv, seed_hkl_tol):
         q1l = np.linalg.norm(q1)
         q2l = np.linalg.norm(q2)

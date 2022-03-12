@@ -64,7 +64,6 @@ def param_from_args(args):
         refine_cycles=int(args["--refine-cycles"]),
         miller_file=args["--miller-file"],
         nb_top=int(args["--top-solutions"]),
-        verbose=args["--verbose"],
         multi_index=args["--multi-index"],
         nb_try=int(args["--nb-try"]),
     )

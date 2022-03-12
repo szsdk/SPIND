@@ -1,3 +1,6 @@
+import tempfile
+
+import h5py
 import numpy as np
 import pytest
 import quaternion as quat
@@ -38,7 +41,7 @@ def test_index(param):
     assert len(solutions) == 1
     s = solutions[0]
     assert s.nb_peaks == peaks.shape[0]
-    assert abs(s.pair_dist_refined) < 1e-7
+    assert abs(s.pair_dist) < 1e-7
 
 
 def test_multiple_index(param):
@@ -50,3 +53,9 @@ def test_multiple_index(param):
     hklmatcher = spind.hkl_matcher(param)
     solutions = spind.index(peaks, hklmatcher, param)
     assert len(solutions) == 2
+
+
+def test_write_h5():
+    with tempfile.TemporaryDirectory() as dir:
+        with h5py.File(f"{dir}/t.h5", "w") as fp:
+            spind.Solution().write_h5(fp)

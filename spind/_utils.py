@@ -55,7 +55,7 @@ def calc_transform_matrix(cell_param, lattice_type=None):
     a_star = (np.cross(bv, cv)) / ((np.cross(bv, cv).dot(av)))
     b_star = (np.cross(cv, av)) / ((np.cross(cv, av).dot(bv)))
     c_star = (np.cross(av, bv)) / ((np.cross(av, bv).dot(cv)))
-    A = np.zeros((3, 3), dtype=np.float64)  # transform matrix
+    A = np.empty((3, 3), dtype=np.float64)  # transform matrix
     A[:, 0] = a_star
     A[:, 1] = b_star
     A[:, 2] = c_star
