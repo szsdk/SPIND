@@ -1,4 +1,5 @@
 import tempfile
+from dataclasses import fields
 
 import h5py
 import numpy as np
@@ -55,7 +56,16 @@ def test_multiple_index(param):
     assert len(solutions) == 2
 
 
-def test_write_h5():
+def test_Solution_IO():
     with tempfile.TemporaryDirectory() as dir:
-        with h5py.File(f"{dir}/t.h5", "w") as fp:
-            spind.Solution().write_h5(fp)
+        fn = f"{dir}/t.h5"
+        with h5py.File(fn, "w") as fp:
+            sol = spind.Solution(nb_peaks=32)
+            sol.write_h5(fp)
+            sol_r = spind.Solution.read_h5(fp)
+            for f in fields(sol):
+                item_a, item_b = getattr(sol, f.name), getattr(sol_r, f.name)
+                if isinstance(item_a, np.ndarray):
+                    np.testing.assert_equal(item_a, item_b)
+                else:
+                    assert item_a == item_b
