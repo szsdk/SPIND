@@ -11,7 +11,6 @@ setuptools.setup(
     install_requires=[
         "click",
         "h5py",
-        "matplotlib",
         "numba",
         "numpy",
         "rich",

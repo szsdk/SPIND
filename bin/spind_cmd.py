@@ -41,17 +41,12 @@ import operator
 import os
 from glob import glob
 from itertools import repeat
-
-# from mpi4py import MPI
-# from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Pool
 
 import click
 import numpy as np
 import rich
 
-# from index import index
-# from util import load_peaks, load_table, calc_transform_matrix
 import spind
 
 
@@ -97,27 +92,10 @@ def write_summary(results, directory):
 
 
 def worker_run(param, hklmatcher, peaks, num_threads):
-    transform_matrix = spind.calc_transform_matrix(
-        param.lattice_constants, param.lattice_type
-    )
-    inv_transform_matrix = np.linalg.inv(transform_matrix)
     solutions = spind.index(
         peaks,
         hklmatcher,
-        transform_matrix,
-        inv_transform_matrix,
-        miller_set=None,
-        seed_pool_size=param.seed_pool_size,
-        seed_len_tol=param.seed_len_tol,
-        seed_angle_tol=param.seed_angle_tol,
-        seed_hkl_tol=param.seed_hkl_tol,
-        eval_hkl_tol=param.eval_hkl_tol,
-        centering=param.centering,
-        centering_weight=param.centering_weight,
-        refine_mode=param.refine_mode,
-        refine_cycles=param.refine_cycles,
-        nb_top=param.nb_top,
-        multi_index=param.multi_index,
+        param,
         num_threads=num_threads,
     )
     return solutions
@@ -145,7 +123,13 @@ def _output_solutions(solutions, output):
 
             # sys.stdout.buffer.write(solutions.transform_matrix_refined.tobytes("C"))
     else:
-        print(solutions)
+        print("CP end", solutions)
+
+
+def get_peak_files(inp):
+    peak_files = glob(f"{inp}/*.txt")
+    peak_files.sort(key=lambda x: int(x.split("-")[-1].split(".")[0]))
+    return peak_files
 
 
 @click.command()
@@ -170,31 +154,29 @@ def main(inp, config, output, num_processes, num_threads, crystfel):
     rich.print(param)
     # peaks = spind.load_peaks(peaks, 'snr', param.min_res)
     if crystfel:
-        solutions = [worker_run(param, hklmatcher, _peaks_from_stdin(inp), num_threads)]
-    elif num_processes == 1:
-        peak_files = glob("%s/*.txt" % inp)
-        peak_files.sort(key=lambda x: int(x.split("-")[-1].split(".")[0]))
         solutions = [
-            worker_run(
+            spind.index(param, hklmatcher, _peaks_from_stdin(inp), num_threads)
+        ]
+    elif num_processes == 1:
+        solutions = [
+            spind.index(
                 param,
                 hklmatcher,
                 spind.load_peaks(pf, "snr", param.min_res),
                 num_threads,
             )
-            for pf in peak_files
+            for pf in get_peak_files(inp)
         ]
     else:
-        peak_files = glob("%s/*.txt" % inp)
-        peak_files.sort(key=lambda x: int(x.split("-")[-1].split(".")[0]))
         with Pool(processes=num_processes) as pool:
             solutions = pool.starmap(
-                worker_run,
+                spind.index,
                 zip(
                     repeat(param),
                     repeat(hklmatcher),
                     map(
                         lambda pf: spind.load_peaks(pf, "snr", param.min_res),
-                        peak_files,
+                        get_peak_files(inp),
                     ),
                     repeat(num_threads),
                 ),
