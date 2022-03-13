@@ -111,6 +111,23 @@ def _peaks_from_stdin(inp):
     return peaks
 
 
+def _peaks_from_txt(filepath, sort_by):
+    a = np.loadtxt(filepath)
+    if sort_by == "snr":
+        ind = np.argsort(a[:, 3])
+    elif sort_by == "intensity":
+        ind = np.argsort(a[:, 2])
+    else:
+        raise Exception('Please use "intensity" or "snr" sorting method!')
+    a = a[ind[::-1]]  # reverse sort
+    peaks = np.empty(a.shape[0], dtype=spind.PEAKS_DTYPE)
+    peaks["coor"] = a[:, 4:7]
+    peaks["resolution"] = a[:, 7]
+    peaks["intensity"] = a[:, 2]
+    peaks["snr"] = a[:, 3]
+    return peaks
+
+
 def _output_solutions(solutions, output):
     if isinstance(output, int):
         if len(solutions[0]) > 0:
@@ -120,10 +137,8 @@ def _output_solutions(solutions, output):
                 os.write(output, A.tobytes("C"))
         else:
             os.write(output, np.full(9, np.nan, dtype=np.float64).tobytes("C"))
-
-            # sys.stdout.buffer.write(solutions.transform_matrix_refined.tobytes("C"))
     else:
-        print("CP end", solutions)
+        print(solutions)
 
 
 def get_peak_files(inp):
@@ -152,17 +167,16 @@ def main(inp, config, output, num_processes, num_threads, crystfel):
     hklmatcher = spind.hkl_matcher(param)
 
     rich.print(param)
-    # peaks = spind.load_peaks(peaks, 'snr', param.min_res)
     if crystfel:
         solutions = [
-            spind.index(param, hklmatcher, _peaks_from_stdin(inp), num_threads)
+            spind.index(_peaks_from_stdin(inp), hklmatcher, param, num_threads)
         ]
     elif num_processes == 1:
         solutions = [
             spind.index(
-                param,
+                _peaks_from_txt(pf, param.sort_by),
                 hklmatcher,
-                spind.load_peaks(pf, "snr", param.min_res),
+                param,
                 num_threads,
             )
             for pf in get_peak_files(inp)
@@ -172,12 +186,12 @@ def main(inp, config, output, num_processes, num_threads, crystfel):
             solutions = pool.starmap(
                 spind.index,
                 zip(
-                    repeat(param),
-                    repeat(hklmatcher),
                     map(
-                        lambda pf: spind.load_peaks(pf, "snr", param.min_res),
+                        lambda pf: _peaks_from_txt(pf, param.sort_by),
                         get_peak_files(inp),
                     ),
+                    repeat(hklmatcher),
+                    repeat(param),
                     repeat(num_threads),
                 ),
             )

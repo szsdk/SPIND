@@ -41,7 +41,7 @@ class HKLMatcher:
 
 
 def hkl_matcher(config):
-    res_cutoff = config["resolution cutoff"]
+    res_cutoff = config["resolution cutoff"] * 1e-10
     lattice_type = config["lattice type"]
     cell_param = np.asarray(config["cell parameters"])
     cell_param[:3] *= 1e-10  # convert to meters

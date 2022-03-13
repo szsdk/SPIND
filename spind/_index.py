@@ -77,7 +77,9 @@ def index(peaks, hklmatcher, p: Params, num_threads: int = 1):
 
 
 @numba.jit(boundscheck=False, nogil=True, cache=True)
-def eval_solution_kernel(hklss, eval_hkl_tol=0.25, centering="P", centering_weight=0.0):  # pragma: no cover
+def eval_solution_kernel(
+    hklss, eval_hkl_tol=0.25, centering="P", centering_weight=0.0
+):  # pragma: no cover
     nb_peaks = hklss.shape[1]
     max_total_error = 0.0
     for hkl_idx in range(hklss.shape[0]):
@@ -167,19 +169,19 @@ def eval_best_solution(
             rhkls,
             ehkls,
         ) = best_solution_raw
-        best_solution = Solution()
-        best_solution.rotation_matrix = Rs[hkl_idx]
-        best_solution.nb_pairs = nb_pairs
-        best_solution.match_rate = match_rate
-        best_solution.seed_error = seed_errors[hkl_idx]
-        best_solution.centering_score = centering_score
-        best_solution.total_score = total_score
-        best_solution.pair_ids = np.where(pair_ids)[0]
-        best_solution.rhkls = rhkls
-        best_solution.ehkls = ehkls
-        best_solution.hkls = hklss[hkl_idx]
-        best_solution.nb_peaks = hklss.shape[1]
-
+        best_solution = Solution(
+            nb_peaks=hklss.shape[1],
+            centering=centering,
+            match_rate=match_rate,
+            total_score=total_score,
+            seed_error=seed_errors[hkl_idx],
+            centering_score=centering_score,
+            pair_ids=np.where(pair_ids)[0],
+            rotation_matrix=Rs[hkl_idx],
+            hkls=hklss[hkl_idx],
+            ehkls=ehkls,
+            rhkls=rhkls,
+        )
     return best_solution
 
 

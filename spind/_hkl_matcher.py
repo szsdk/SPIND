@@ -2,7 +2,6 @@ import numba
 import numpy as np
 
 from ._params import Params
-from ._utils import calc_transform_matrix
 
 
 @numba.jit(boundscheck=False, cache=True)
@@ -55,7 +54,7 @@ def my_norm(a):  # pragma: no cover
 
 
 @numba.jit(boundscheck=False, cache=True)
-def get_rot(a, ap):   # pragma: no cover
+def get_rot(a, ap):  # pragma: no cover
     d0 = ap[0] - a[0]
     d1 = ap[1] - a[1]
     l0 = my_norm(d0)
@@ -125,8 +124,8 @@ def get_rot(a, ap):   # pragma: no cover
 @numba.jit(boundscheck=False, nogil=True, cache=True)
 def _hkl_match_kernel(
     q12, q1s, q1ns, q1l, q2s, q2ns, q2l, ang_s, ang_e, A0_inv, seed_hkl_tol
-):   # pragma: no cover
-    # ref12 = np.empty((2, 3), np.float64)
+):  # pragma: no cover
+    ref12 = np.empty((2, 3), np.float64)
     al = (q12[0, 0] ** 2 + q12[1, 0] ** 2 + q12[2, 0] ** 2) ** 0.5
     bl = (q12[0, 1] ** 2 + q12[1, 1] ** 2 + q12[2, 1] ** 2) ** 0.5
     C1 = (
@@ -142,6 +141,7 @@ def _hkl_match_kernel(
     # Rs = np.empty((0, 3, 3))
     # seed_errors = np.empty((0,))
     num_test = 0
+    w = np.array([[1, 0, 0], [0, 1, 0], [0, 0, -1]], np.float64)
     for i1 in range(q1s.shape[0]):
         # na = 0
         for i2 in numba.prange(q2s.shape[0]):
@@ -164,12 +164,13 @@ def _hkl_match_kernel(
                 if se > seed_error:
                     seed_error = se
             else:
-                # ref12[0] = q1s[i1]
-                # ref12[1] = q2s[i2]
-                # h = q12 @ ref12
-                # u, s, vh = np.linalg.svd(h)
-                # R = u @ vh
-                R = get_rot(q12.T, q12_rot.T)
+                ref12[0] = q1s[i1]
+                ref12[1] = q2s[i2]
+                h = q12 @ ref12
+                u, s, vh = np.linalg.svd(h)
+                R = u @ vh
+                if np.linalg.det(R) < 0:
+                    R = u @ w @ vh
                 Rs.append(R)
                 seed_errors.append(seed_error)
     return Rs, seed_errors
