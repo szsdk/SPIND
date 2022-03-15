@@ -36,27 +36,34 @@ def presort_peaks(peaks, sort_by, res_cutoff):
     return peaks
 
 
-def calc_transform_matrix(cell_param, lattice_type=None):
-    a, b, c = np.asarray(cell_param[0:3])
-    al, be, ga = cell_param[3:]
-    if lattice_type == "monoclinic":
-        av = [a, 0.0, 0.0]
-        bv = [0, b, 0.0]
-        cv = [c * np.cos(np.deg2rad(be)), 0, c * np.sin(np.deg2rad(be))]
-    elif lattice_type == "orthorhombic":
-        av = [a, 0.0, 0.0]
-        bv = [0.0, b, 0.0]
-        cv = [0.0, 0.0, c]
-        assert al == 90.0
-        assert be == 90.0
-        assert ga == 90.0
+_eijk = np.array(
+    [
+        [[0, 0, 0], [0, 0, 1], [0, -1, 0]],
+        [[0, 0, -1], [0, 0, 0], [1, 0, 0]],
+        [[0, 1, 0], [-1, 0, 0], [0, 0, 0]],
+    ]
+)
+
+
+def calc_transform_matrix(cell_param):
+    if len(cell_param) == 6:
+        a, b, c, al, be, ga = cell_param
+        if not np.isclose(al, 90) or (not np.isclose(ga, 90)):
+            raise NotImplementedError(
+                "For cell_param having six elements, only monoclinic or orthorhombic crystal is supported."
+            )
+        A = np.array(
+            [
+                [a, 0.0, 0.0],
+                [0, b, 0.0],
+                [c * np.cos(np.deg2rad(be)), 0, c * np.sin(np.deg2rad(be))],
+            ]
+        )
+    elif len(cell_param) == 3:
+        A = np.array(cell_param, np.float64)
     else:
-        raise NotImplementedError("%s not implemented yet" % lattice_type)
-    a_star = (np.cross(bv, cv)) / ((np.cross(bv, cv).dot(av)))
-    b_star = (np.cross(cv, av)) / ((np.cross(cv, av).dot(bv)))
-    c_star = (np.cross(av, bv)) / ((np.cross(av, bv).dot(cv)))
-    A = np.empty((3, 3), dtype=np.float64)  # transform matrix
-    A[:, 0] = a_star
-    A[:, 1] = b_star
-    A[:, 2] = c_star
-    return A
+        raise ValueError()
+
+    star = np.einsum("lmn,ijk,mj,nk->li", _eijk, _eijk, A, A)
+    star /= np.einsum("ij,ij->i", star, A)
+    return star.T

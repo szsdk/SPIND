@@ -169,6 +169,7 @@ def eval_best_solution(
             rhkls,
             ehkls,
         ) = best_solution_raw
+        pair_ids = np.where(pair_ids)[0]
         best_solution = Solution(
             nb_peaks=hklss.shape[1],
             centering=centering,
@@ -176,7 +177,7 @@ def eval_best_solution(
             total_score=total_score,
             seed_error=seed_errors[hkl_idx],
             centering_score=centering_score,
-            pair_ids=np.where(pair_ids)[0],
+            pair_ids=pair_ids,
             rotation_matrix=Rs[hkl_idx],
             hkls=hklss[hkl_idx],
             ehkls=ehkls,
@@ -189,8 +190,8 @@ def index_once(
     peaks,
     hklmatcher,
     p: Params,
-    unindexed_peak_ids=None,
-    num_threads=1,
+    unindexed_peak_ids,
+    num_threads,
 ):
     """
     Perform index once.
@@ -214,7 +215,7 @@ def index_once(
     :return: best indexing solution.
     """
 
-    qs = peaks["coor"] * 1e-10
+    qs = peaks["coor"]  # in angstrom^-1
 
     time_stat = {
         "evaluation": -1.0,
@@ -348,6 +349,8 @@ def refine_solution(sol, qs, mode="global", nb_cycles=10):
         x0 = transform_matrix_refined.reshape(-1)
         res = minimize(_func, x0, method="CG", options={"disp": False})
         transform_matrix_refined = res.x.reshape(3, 3)
+    elif mode == "none":
+        pass
     else:
         raise ValueError("Not supported refine mode: %s" % mode)
 

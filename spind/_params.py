@@ -11,7 +11,6 @@ Params = namedtuple(
     [
         "res_cutoff",
         "lattice_constants",
-        "lattice_type",
         "centering",
         "sort_by",
         "seed_pool_size",
@@ -80,15 +79,12 @@ def params(config):
     else:
         raise ValueError()
 
-    transform_matrix = calc_transform_matrix(
-        config["cell parameters"], config["lattice type"]
-    )
+    transform_matrix = calc_transform_matrix(config["cell parameters"])
     inv_transform_matrix = np.linalg.inv(transform_matrix)
 
     return Params(
         res_cutoff=config["resolution cutoff"],
         lattice_constants=config["cell parameters"],
-        lattice_type=config["lattice type"],
         centering=config["centering"],
         sort_by=config["sort by"],
         seed_pool_size=config["seed pool size"],

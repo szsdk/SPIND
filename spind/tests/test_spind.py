@@ -24,7 +24,7 @@ def test_hkl_matcher(param: spind.Params):
 
 def gen_peaks(param, r: quat.quaternion):
     _, qs = spind.gen_hkls(param)
-    qs = qs[3::1000] * 1e10
+    qs = qs[3::1000]
     qs = quat.rotate_vectors(r, qs)
     ans = np.empty(qs.shape[0], dtype=spind.PEAKS_DTYPE)
     ans["coor"] = qs
@@ -69,3 +69,10 @@ def test_Solution_IO():
                     np.testing.assert_equal(item_a, item_b)
                 else:
                     assert item_a == item_b
+
+
+def test_calc_transform_matrix():
+    np.testing.assert_almost_equal(
+        spind.calc_transform_matrix([1, 2, 3, 90, 90, 90]),
+        spind.calc_transform_matrix(np.diag([1, 2, 3])),
+    )
