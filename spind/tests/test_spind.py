@@ -60,26 +60,49 @@ def test_index(p, hklmatcher, peaks, r):
     assert len(solutions) == 1
     s = solutions[0]
     assert np.nanmean(s.ehkls) <= (s_g.ehkls.mean() * 3)
-    # np.testing.assert_almost_equal(
-    # np.abs(s.hkls),
-    # np.abs(s_g.hkls)
-    # )
-    if not np.allclose(np.abs(s.hkls), np.abs(s_g.hkls)):
+    np.testing.assert_almost_equal(np.abs(s.hkls), np.abs(s_g.hkls))
+
+
+def multiple_index_test_set():
+    with open("config.yml") as fp:
+        config = yaml.safe_load(fp)
+    config["resolution cutoff"] = 20
+    config["cell parameters"] = [[102, 1, 0], [0, 84, 40], [12, -32, 80]]
+    config["multi index"] = True
+    config["seed length tolerance"] = 0.002
+    config["seed hkl tolerance"] = 0.08
+    config["eval tolerance"] = 0.12
+    config["seed pool size"] = 10
+    p = spind.params(config)
+    hklmatcher = spind.hkl_matcher(p)
+    _, qs = spind.gen_hkls(p)
+    # np.random.seed(32)
+    for num in range(1, 6):
+        rs = []
+        peaks = []
+        for _ in range(num):
+            r, peak = simulate(qs, 0.2, 0.001)
+            rs.append(r)
+            peaks.append(peak)
+        yield p, hklmatcher, peaks, rs
+
+
+@pytest.mark.parametrize("p, hklmatcher, peaks, rs", multiple_index_test_set())
+def test_multiple_index(p, hklmatcher, peaks, rs):
+    num_sol = len(rs)
+    peaks = np.concatenate(peaks)
+    peak_org_ids = np.argsort(peaks["resolution"])[::-1]
+    peaks = peaks[peak_org_ids]
+
+    hklmatcher = spind.hkl_matcher(p)
+    solutions = spind.index(peaks, hklmatcher, p)
+    # for sol in solutions:
+    # print(peak_org_ids[np.array(sol.seed_pair)], len(sol.pair_ids), np.sort(peak_org_ids[sol.pair_ids]))
+    if len(solutions) != num_sol:
         from IPython import embed
 
         embed()
-
-
-def test_multiple_index(param):
-    r1 = quat.quaternion(0.5, 0.5, 0.5, 0.5)
-    r2 = quat.quaternion(0.6, 0.0, 0.8, 0.0)
-    _, qs = spind.gen_hkls(param)
-    peaks = np.concatenate([gen_peaks(qs, r) for r in [r1, r2]])
-    param = param._replace(multi_index=True, nb_try=10)
-
-    hklmatcher = spind.hkl_matcher(param)
-    solutions = spind.index(peaks, hklmatcher, param)
-    assert len(solutions) == 2
+    assert len(solutions) == num_sol
 
 
 def test_Solution_IO():

@@ -274,7 +274,7 @@ def index_once(
     }
 
     t_total0 = time.time()
-    if p.sort_by == "none":
+    if p.sort_by == "random":
         seed_pool = np.random.choice(
             unindexed_peak_ids,
             min(p.seed_pool_size, len(unindexed_peak_ids)),
