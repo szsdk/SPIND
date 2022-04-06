@@ -15,6 +15,7 @@ setuptools.setup(
         "numpy",
         "rich",
         "pyyaml",
+        "numpy-quaternion",
     ],
     entry_points={
         "console_scripts": [

@@ -7,7 +7,6 @@ from itertools import combinations
 
 import numba
 import numpy as np
-from numpy.linalg import norm
 from scipy.optimize import fmin_cg, minimize
 
 from ._params import Params
@@ -28,17 +27,22 @@ def correct_match_rate(sol, qs, miller_set=None, centering_weight=0.0):
         sol_c.match_rate = sol.match_rate
         sol_c.pair_ids = sol.pair_ids
         eXYZs = np.abs(sol.transform_matrix.dot(sol.rhkls.T) - qs.T).T
-        sol_c.pair_dist = norm(eXYZs, axis=1)[sol_c.pair_ids].mean()
+        sol_c.pair_dist = np.linalg.norm(eXYZs, axis=1)[sol_c.pair_ids].mean()
         sol_c.total_score = sol.total_score
     else:
         miller_set = miller_set.astype(dtype)
         true_pair_ids = []
         for pair_id in sol.pair_ids:
-            if norm(miller_set - sol.rhkls[pair_id].astype(dtype), axis=1).min() == 0:
+            if (
+                np.linalg.norm(
+                    miller_set - sol.rhkls[pair_id].astype(dtype), axis=1
+                ).min()
+                == 0
+            ):
                 true_pair_ids.append(pair_id)
         true_match_rate = float(len(true_pair_ids)) / sol.nb_peaks
         eXYZs = np.abs(sol.transform_matrix.dot(sol.rhkls.T) - qs.T).T
-        true_pair_dist = norm(eXYZs, axis=1)[true_pair_ids].mean()
+        true_pair_dist = np.linalg.norm(eXYZs, axis=1)[true_pair_ids].mean()
         true_pair_hkls = sol.rhkls[true_pair_ids].astype(dtype)
         centering_score = calc_centering_score(true_pair_hkls, centering=sol.centering)
         true_total_score = centering_score * centering_weight + true_match_rate
@@ -49,7 +53,9 @@ def correct_match_rate(sol, qs, miller_set=None, centering_weight=0.0):
     return sol_c
 
 
-def index(peaks, hklmatcher, p: Params, num_threads: int = 1):
+def index(
+    peaks, hklmatcher, p: Params, num_threads: int = 1, custom_check=lambda x: True
+):
     """
     Perform indexing on given peaks.
     :param peaks: peak info, including pos_x, pos_y, total_intensity, snr,
@@ -58,43 +64,51 @@ def index(peaks, hklmatcher, p: Params, num_threads: int = 1):
     :return: indexing solutions.
     """
     solutions = []
-    unindexed_peak_ids = list(range(len(peaks)))
+    unindexed_peak_ids = set(range(len(peaks)))
 
+    nb_failed = 0
     for i in range(p.nb_try if p.multi_index else 1):
+        if nb_failed >= p.nb_failed:
+            break
         solution = index_once(
             peaks,
             hklmatcher,
             p,
-            unindexed_peak_ids=unindexed_peak_ids,
+            unindexed_peak_ids=sorted(list(unindexed_peak_ids)),
             num_threads=num_threads,
         )
-        if solution.total_score == 0.0:
+        if (solution is None) or (not custom_check(solution)):
+            nb_failed += 1
             continue
+        nb_failed = 0
         solutions.append(solution)
-        unindexed_peak_ids = list(set(unindexed_peak_ids) - set(solution.pair_ids))
-        unindexed_peak_ids.sort()
+        unindexed_peak_ids = unindexed_peak_ids - set(solution.pair_ids)
     return solutions
 
 
 @numba.jit(boundscheck=False, nogil=True, cache=True)
 def eval_solution_kernel(
-    hklss, eval_hkl_tol=0.25, centering="P", centering_weight=0.0
+    hklss, matched_idx, eval_hkl_tol, ref_hkls, centering="P", centering_weight=0.0
 ):  # pragma: no cover
     nb_peaks = hklss.shape[1]
-    max_total_error = 0.0
+    max_total_error = -np.inf
     for hkl_idx in range(hklss.shape[0]):
         nb_pairs = 0
         total_error = 0
-        rhkls = np.empty((nb_peaks, 3), np.int32)
+        rhkls = np.empty((nb_peaks, 3), np.float64)
         ehkls = np.empty((nb_peaks, 3), np.float64)
         pair_ids = np.zeros(nb_peaks, np.bool_)
         nb_X_peaks = np.zeros(4, np.uint32)  # X: A B C I for centering
         for q_idx in range(nb_peaks):
             hkl = hklss[hkl_idx, q_idx]
             max_ehkl = 0
+            if matched_idx[hkl_idx, q_idx] == len(ref_hkls):
+                rhkls[q_idx, :] = np.nan
+                ehkls[q_idx, :] = np.nan
+                continue
+            rhkls[q_idx, :] = ref_hkls[matched_idx[hkl_idx, q_idx]]
             sum_ehkl = 0
             for i in range(3):
-                rhkls[q_idx, i] = round(hkl[i])
                 e = np.abs(hkl[i] - rhkls[q_idx, i])
                 ehkls[q_idx, i] = e
                 sum_ehkl += e
@@ -113,6 +127,7 @@ def eval_solution_kernel(
             )
 
         total_error = total_error / (3 * nb_peaks) if nb_pairs else 1.0
+        # print(total_error)
         match_rate = nb_pairs / nb_peaks
         if nb_pairs == 0:
             centering_score = 0.0
@@ -126,7 +141,8 @@ def eval_solution_kernel(
             centering_score = 2 * nb_X_peaks[3] / nb_pairs - 1
         elif centering == "P":
             centering_score = 2 * (1 - np.max(nb_X_peaks) / nb_pairs)
-        total_score = centering_weight * centering_score + match_rate
+        total_score = centering_weight * centering_score + match_rate - total_error
+        # total_score = -total_error
         if total_score > max_total_error:
             ans = (
                 hkl_idx,
@@ -140,18 +156,30 @@ def eval_solution_kernel(
                 ehkls,
             )
             max_total_error = total_score
-    if max_total_error > 0.0:
+    if max_total_error > -np.inf:
         return ans
     else:
         return None
 
 
 def eval_best_solution(
-    Rs, seed_errors, hklss, eval_hkl_tol=0.25, centering="P", centering_weight=0.0
+    hklmatcher,
+    Rs,
+    seed_errors,
+    hklss,
+    eval_hkl_tol=0.25,
+    centering="P",
+    centering_weight=0.0,
 ):
+    d, matched_idx = hklmatcher.hkl_tree.query(
+        hklss.reshape(-1, 3), distance_upper_bound=eval_hkl_tol * 2
+    )
+    matched_idx = matched_idx.reshape(hklss.shape[:-1])
     best_solution_raw = eval_solution_kernel(
         hklss,
-        eval_hkl_tol=eval_hkl_tol,
+        matched_idx,
+        eval_hkl_tol,
+        ref_hkls=hklmatcher.hkls,
         centering=centering,
         centering_weight=centering_weight,
     )
@@ -184,6 +212,26 @@ def eval_best_solution(
             rhkls=rhkls,
         )
     return best_solution
+
+
+def eval_rot(peaks, hklmatcher, rot, p: Params):
+    hkls = peaks @ rot @ p.inv_transform_matrix.T
+    sol = eval_best_solution(
+        hklmatcher,
+        rot.reshape(1, 3, 3),
+        np.array([np.nan]),
+        hkls.reshape(1, -1, 3),
+        eval_hkl_tol=p.eval_hkl_tol,
+        centering=p.centering,
+        centering_weight=p.centering_weight,
+    )
+
+    eXYZs = np.abs(sol.rhkls @ sol.transform_matrix.T - peaks)
+    dists = np.linalg.norm(eXYZs, axis=1)
+    sol.pair_dist = dists[
+        sol.pair_ids
+    ].mean()  # average distance between matched peaks and the correspoding predicted spots
+    return sol
 
 
 def index_once(
@@ -226,9 +274,16 @@ def index_once(
     }
 
     t_total0 = time.time()
-    if unindexed_peak_ids is None:
-        unindexed_peak_ids = list(range(len(peaks)))
-    seed_pool = unindexed_peak_ids[: min(p.seed_pool_size, len(unindexed_peak_ids))]
+    if p.sort_by == "none":
+        seed_pool = np.random.choice(
+            unindexed_peak_ids,
+            min(p.seed_pool_size, len(unindexed_peak_ids)),
+            replace=False,
+        )
+    else:
+        seed_pool = unindexed_peak_ids[: min(p.seed_pool_size, len(unindexed_peak_ids))]
+    if len(seed_pool) <= 1:
+        return None
     good_solutions = []
     # collect good solutions
     t0 = time.time()
@@ -240,6 +295,7 @@ def index_once(
         t_eval = time.time() - t_iter
         hklss = np.einsum("mp,npq,iq->nmi", qs, Rs, p.inv_transform_matrix)
         solution = eval_best_solution(
+            hklmatcher,
             Rs,
             seed_errors,
             hklss,
@@ -247,6 +303,8 @@ def index_once(
             centering=p.centering,
             centering_weight=p.centering_weight,
         )
+        if solution is not None:
+            solution.seed_pair = tuple(seed_pair)
         return (seed_pair, t_eval, Rs.shape[0]), solution
 
     with ThreadPoolExecutor(max_workers=num_threads) as executor:
@@ -257,39 +315,33 @@ def index_once(
         if s is not None:
             good_solutions.append(s)
 
-    if len(good_solutions) > 0:
-        best_solution = max(good_solutions, key=lambda x: x.total_score)
-    else:
-        best_solution = None
+    if len(good_solutions) == 0:
+        return None
+
+    best_solution = max(good_solutions, key=lambda x: x.total_score)
     time_stat["evaluation"] = time.time() - t0
 
-    # refine best solution if exists
-    if best_solution is None:
-        dummy_solution = Solution()
-        dummy_solution.R = np.identity(3)
-        dummy_solution.match_rate = 0.0
-        return dummy_solution
-    else:
-        # refine best solution
-        t0 = time.time()
-        best_solution.transform_matrix = best_solution.rotation_matrix.dot(
-            p.transform_matrix
-        )
-        eXYZs = np.abs(
-            best_solution.transform_matrix.dot(best_solution.rhkls.T) - qs.T
-        ).T  # Fourier space error between peaks and predicted spots
-        dists = norm(eXYZs, axis=1)
-        best_solution.pair_dist = dists[
-            best_solution.pair_ids
-        ].mean()  # average distance between matched peaks and the correspoding predicted spots
+    # refine best solution
+    t0 = time.time()
+    best_solution.transform_matrix = best_solution.rotation_matrix.dot(
+        p.transform_matrix
+    )
+    # eXYZs = np.abs(
+    # best_solution.transform_matrix.dot(best_solution.rhkls.T) - qs.T
+    # ).T  # Fourier space error between peaks and predicted spots
+    eXYZs = np.abs(best_solution.rhkls @ best_solution.transform_matrix.T - qs)
+    dists = np.linalg.norm(eXYZs, axis=1)
+    best_solution.pair_dist = dists[
+        best_solution.pair_ids
+    ].mean()  # average distance between matched peaks and the correspoding predicted spots
 
-        best_solution = refine_solution(
-            best_solution, qs, mode=p.refine_mode, nb_cycles=p.refine_cycles
-        )
-        time_stat["refinement"] = time.time() - t0
-        time_stat["total"] = time.time() - t_total0
-        best_solution.time_stat = time_stat
-        return best_solution
+    best_solution = refine_solution(
+        best_solution, qs, mode=p.refine_mode, nb_cycles=p.refine_cycles
+    )
+    time_stat["refinement"] = time.time() - t0
+    time_stat["total"] = time.time() - t_total0
+    best_solution.time_stat = time_stat
+    return best_solution
 
 
 def refine_solution(sol, qs, mode="global", nb_cycles=10):
@@ -313,7 +365,7 @@ def refine_solution(sol, qs, mode="global", nb_cycles=10):
             r1 = asx * h + bsx * k + csx * l - qx
             r2 = asy * h + bsy * k + csy * l - qy
             r3 = asz * h + bsz * k + csz * l - qz
-            return r1 ** 2.0 + r2 ** 2.0 + r3 ** 2.0
+            return r1**2.0 + r2**2.0 + r3**2.0
 
         def _grad(x, *argv):  # gradient function
             asx, bsx, csx, asy, bsy, csy, asz, bsz, csz = x
@@ -356,7 +408,7 @@ def refine_solution(sol, qs, mode="global", nb_cycles=10):
 
     # refinement results
     eXYZs = np.abs(transform_matrix_refined.dot(rhkls.T) - qs.T).T
-    pair_dist = norm(eXYZs, axis=1)[pair_ids].mean()
+    pair_dist = np.linalg.norm(eXYZs, axis=1)[pair_ids].mean()
 
     if pair_dist > sol.pair_dist:  # keep original sol
         return sol

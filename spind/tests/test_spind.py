@@ -5,8 +5,10 @@ import h5py
 import numpy as np
 import pytest
 import quaternion as quat
+import yaml
 
 import spind
+from spind.simulator import simulate
 
 
 @pytest.fixture()
@@ -22,8 +24,7 @@ def test_hkl_matcher(param: spind.Params):
     spind.hkl_matcher(param)
 
 
-def gen_peaks(param, r: quat.quaternion):
-    _, qs = spind.gen_hkls(param)
+def gen_peaks(qs, r: quat.quaternion):
     qs = qs[3::1000]
     qs = quat.rotate_vectors(r, qs)
     ans = np.empty(qs.shape[0], dtype=spind.PEAKS_DTYPE)
@@ -34,21 +35,46 @@ def gen_peaks(param, r: quat.quaternion):
     return ans
 
 
-def test_index(param):
-    r = quat.quaternion(0.5, 0.5, 0.5, 0.5)
-    peaks = gen_peaks(param, r)
-    hklmatcher = spind.hkl_matcher(param)
-    solutions = spind.index(peaks, hklmatcher, param)
+def index_test_set():
+    with open("config.yml") as fp:
+        config = yaml.safe_load(fp)
+    config["resolution cutoff"] = 20
+    for cpara in [
+        [103.45, 50.28, 69.380, 90.00, 109.67, 90.00],
+        [[102, 1, 0], [0, 84, 40], [12, -32, 80]],
+    ]:
+        config["cell parameters"] = cpara
+        p = spind.params(config)
+        hklmatcher = spind.hkl_matcher(p)
+        _, qs = spind.gen_hkls(p)
+        for _ in range(10):
+            r, peaks = simulate(qs, 0.2, 0.001)
+            yield p, hklmatcher, peaks, r
+
+
+@pytest.mark.parametrize("p, hklmatcher, peaks, r", index_test_set())
+def test_index(p, hklmatcher, peaks, r):
+    peaks = peaks[np.argsort(peaks["resolution"])]
+    s_g = spind.eval_rot(peaks["coor"], hklmatcher, quat.as_rotation_matrix(r), p)
+    solutions = spind.index(peaks, hklmatcher, p)
     assert len(solutions) == 1
     s = solutions[0]
-    assert s.nb_peaks == peaks.shape[0]
-    assert abs(s.pair_dist) < 1e-7
+    assert np.nanmean(s.ehkls) <= (s_g.ehkls.mean() * 3)
+    # np.testing.assert_almost_equal(
+    # np.abs(s.hkls),
+    # np.abs(s_g.hkls)
+    # )
+    if not np.allclose(np.abs(s.hkls), np.abs(s_g.hkls)):
+        from IPython import embed
+
+        embed()
 
 
 def test_multiple_index(param):
     r1 = quat.quaternion(0.5, 0.5, 0.5, 0.5)
     r2 = quat.quaternion(0.6, 0.0, 0.8, 0.0)
-    peaks = np.concatenate([gen_peaks(param, r) for r in [r1, r2]])
+    _, qs = spind.gen_hkls(param)
+    peaks = np.concatenate([gen_peaks(qs, r) for r in [r1, r2]])
     param = param._replace(multi_index=True, nb_try=10)
 
     hklmatcher = spind.hkl_matcher(param)
@@ -76,3 +102,8 @@ def test_calc_transform_matrix():
         spind.calc_transform_matrix([1, 2, 3, 90, 90, 90]),
         spind.calc_transform_matrix(np.diag([1, 2, 3])),
     )
+
+
+def test_simulate(param):
+    _, qs = spind.gen_hkls(param)
+    simulate(qs, 0.2, 0.0001)

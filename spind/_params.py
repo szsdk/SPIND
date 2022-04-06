@@ -15,16 +15,15 @@ Params = namedtuple(
         "sort_by",
         "seed_pool_size",
         "seed_len_tol",
-        "seed_angle_tol",
         "seed_hkl_tol",
         "eval_hkl_tol",
         "centering_weight",
         "refine_mode",
         "refine_cycles",
-        "miller_file",
         "nb_top",
         "multi_index",
         "nb_try",
+        "nb_failed",
         "transform_matrix",
         "inv_transform_matrix",
         "miller_set",
@@ -34,7 +33,6 @@ Params = namedtuple(
 """
     :param seed_pool_size: size of seed pool.
     :param seed_len_tol: length tolerance for seed.
-    :param seed_angle_tol: angle tolerance for seed.
     :param seed_hkl_tol: hkl tolerance for seed.
     :param eval_hkl_tol: hkl tolerance for paired peaks.
     :param centering: centering type.
@@ -46,27 +44,6 @@ Params = namedtuple(
     :param multi_index: enable multiple index.
     :param nb_try: max try for multiple index.
 """
-
-
-def param_from_args(args):
-    return Params(
-        min_res=float(args["--min-resolution"]),
-        lattice_constants=eval(args["--lattice-constants"]),
-        lattice_type=args["--lattice-type"],
-        centering=args["--centering"],
-        seed_pool_size=int(args["--seed-pool-size"]),
-        seed_len_tol=float(args["--seed-len-tol"]),
-        seed_angle_tol=float(args["--seed-angle-tol"]),
-        seed_hkl_tol=float(args["--seed-hkl-tol"]),
-        eval_hkl_tol=float(args["--eval-hkl-tol"]),
-        centering_weight=float(args["--centering-weight"]),
-        refine_mode=args["--refine-mode"],
-        refine_cycles=int(args["--refine-cycles"]),
-        miller_file=args["--miller-file"],
-        nb_top=int(args["--top-solutions"]),
-        multi_index=args["--multi-index"],
-        nb_try=int(args["--nb-try"]),
-    )
 
 
 def params(config):
@@ -89,18 +66,16 @@ def params(config):
         sort_by=config["sort by"],
         seed_pool_size=config["seed pool size"],
         seed_len_tol=config["seed length tolerance"],
-        seed_angle_tol=config["seed angle tolerance"],
         seed_hkl_tol=config["seed hkl tolerance"],
         eval_hkl_tol=config["eval tolerance"],
         centering_weight=config["centering factor"],
         refine_mode=config["refine mode"],
         refine_cycles=int(config["refine cycles"]),
-        # miller_file=config["miller file"], #TODO
-        miller_file=None,
         nb_top=int(config["top solutions"]),
         multi_index=config["multi index"],
         nb_try=int(config["number of try"]),
+        nb_failed=int(config["number of failed try"]),
         transform_matrix=transform_matrix,
         inv_transform_matrix=inv_transform_matrix,
-        miller_set=None,
+        miller_set=config["miller set"],
     )

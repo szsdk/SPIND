@@ -1,5 +1,6 @@
 import numba
 import numpy as np
+from scipy.spatial import KDTree
 
 from ._params import Params
 
@@ -27,10 +28,10 @@ def get_alpha(al, bl, c, cl, d, dl, C1):  # pragma: no cover
     s += n[1] ** 2
     n[2] = c[0] * d[1] - c[1] * d[0]
     s += n[2] ** 2
-    n /= s ** 0.5
+    n /= s**0.5
 
     x, y = A + B * cosC, B * sinC
-    rxy = (x ** 2 + y ** 2) ** 0.5
+    rxy = (x**2 + y**2) ** 0.5
     cl = al / cl / rxy
     x *= cl
     y *= cl
@@ -144,7 +145,7 @@ def _hkl_match_kernel(
     w = np.array([[1, 0, 0], [0, 1, 0], [0, 0, -1]], np.float64)
     for i1 in range(q1s.shape[0]):
         # na = 0
-        for i2 in numba.prange(q2s.shape[0]):
+        for i2 in range(q2s.shape[0]):
             ang = (
                 q1ns[i1, 0] * q2ns[i2, 0]
                 + q1ns[i1, 1] * q2ns[i2, 1]
@@ -177,7 +178,7 @@ def _hkl_match_kernel(
 
 
 class HKLMatcher:
-    def __init__(self, hkls, qs, qls, seed_len_tol, seed_angle_tol):
+    def __init__(self, hkls, qs, qls, seed_len_tol):
         self.hkls = hkls
         self.qs = qs
         self.qls = qls
@@ -186,7 +187,7 @@ class HKLMatcher:
         hklls = np.linalg.norm(self.hkls, axis=1)
         self.q_over_hkl = np.divide(self.qls, hklls, where=(np.abs(hklls) > 1e-10))
         self.seed_len_tol = seed_len_tol
-        self.seed_angle_tol = seed_angle_tol
+        self.hkl_tree = KDTree(self.hkls)
 
     def as_dict(self):
         return {"hkls": self.hkls, "qs": self.qs}
@@ -206,7 +207,7 @@ class HKLMatcher:
         idx2 = dq2 < self.seed_len_tol
         idx2 = idx2 & ((seed_hkl_tol * self.q_over_hkl) > dq2)
 
-        angle_tol = self.seed_len_tol * 1e-10 * max(1 / q1l, 1 / q2l)
+        angle_tol = self.seed_len_tol * max(1 / q1l, 1 / q2l)
         q12 = np.array([q1, q2]).T.copy()
         Rs, es = _hkl_match_kernel(
             q12,
@@ -225,46 +226,50 @@ class HKLMatcher:
             return np.empty((0, 3, 3)), np.empty((0,))
         else:
             return np.array(Rs), np.array(es)
-            # return np.concatenate(Rs, axis=0), np.concatenate(es, axis=0)
 
 
-def gen_hkls(p: Params):
+def gen_hkls(p: Params, ignore_miller_set=False):
     a_star, b_star, c_star = p.transform_matrix
     q_cutoff = 1.0 / p.res_cutoff
-    max_h = int(np.ceil(q_cutoff / np.linalg.norm(a_star)))
-    max_k = int(np.ceil(q_cutoff / np.linalg.norm(b_star)))
-    max_l = int(np.ceil(q_cutoff / np.linalg.norm(c_star)))
-    # hkl grid
-    hh = np.arange(-max_h, max_h + 1)
-    kk = np.arange(-max_k, max_k + 1)
-    ll = np.arange(-max_l, max_l + 1)
+    if (p.miller_set is not None) and (not ignore_miller_set):
+        hkls = np.load(p.miller_set)
+    else:
+        max_h = int(np.ceil(q_cutoff / np.linalg.norm(a_star)))
+        max_k = int(np.ceil(q_cutoff / np.linalg.norm(b_star)))
+        max_l = int(np.ceil(q_cutoff / np.linalg.norm(c_star)))
+        # hkl grid
+        hh = np.arange(-max_h, max_h + 1)
+        kk = np.arange(-max_k, max_k + 1)
+        ll = np.arange(-max_l, max_l + 1)
 
-    hs, ks, ls = np.meshgrid(hh, kk, ll)
-    hkls = np.ones((hs.size, 3))
-    hkls[:, 0] = hs.reshape((-1))
-    hkls[:, 1] = ks.reshape((-1))
-    hkls[:, 2] = ls.reshape((-1))
+        hs, ks, ls = np.meshgrid(hh, kk, ll)
+        hkls = np.ones((hs.size, 3))
+        hkls[:, 0] = hs.reshape((-1))
+        hkls[:, 1] = ks.reshape((-1))
+        hkls[:, 2] = ls.reshape((-1))
 
     # remove high resolution hkls
-    qs = p.transform_matrix.dot(hkls.T).T
+    qs = hkls @ p.transform_matrix.T
     valid_idx = np.linalg.norm(qs, axis=1) < q_cutoff
+    qs = qs[valid_idx]
     hkls = hkls[valid_idx]
 
-    # apply systematic absence
-    if p.centering == "I":  # h+k+l == 2n
-        valid_idx = hkls.sum(axis=1) % 2 == 0
-    elif p.centering == "A":  # k+l == 2n
-        valid_idx = (hkls[:, 1] + hkls[:, 2]) % 2 == 0
-    elif p.centering == "B":  # h+l == 2n
-        valid_idx = (hkls[:, 0] + hkls[:, 2]) % 2 == 0
-    elif p.centering == "C":  # h+k == 2n
-        valid_idx = (hkls[:, 0] + hkls[:, 1]) % 2 == 0
-    elif p.centering == "P":
-        valid_idx = np.ones(hkls.shape[0], bool)
-    else:
-        raise NotImplementedError("%s not implemented" % p.centering)
-    hkls = hkls[valid_idx]
-    qs = hkls @ p.transform_matrix.T
+    if (p.miller_set is None) and (not ignore_miller_set):
+        # apply systematic absence
+        if p.centering == "I":  # h+k+l == 2n
+            valid_idx = hkls.sum(axis=1) % 2 == 0
+        elif p.centering == "A":  # k+l == 2n
+            valid_idx = (hkls[:, 1] + hkls[:, 2]) % 2 == 0
+        elif p.centering == "B":  # h+l == 2n
+            valid_idx = (hkls[:, 0] + hkls[:, 2]) % 2 == 0
+        elif p.centering == "C":  # h+k == 2n
+            valid_idx = (hkls[:, 0] + hkls[:, 1]) % 2 == 0
+        elif p.centering == "P":
+            valid_idx = np.ones(hkls.shape[0], bool)
+        else:
+            raise NotImplementedError("%s not implemented" % p.centering)
+        hkls = hkls[valid_idx]
+        qs = qs[valid_idx]
     return hkls, qs
 
 
@@ -277,5 +282,4 @@ def hkl_matcher(p: Params):
         qs[idx],
         la[idx],
         seed_len_tol=p.seed_len_tol,
-        seed_angle_tol=p.seed_angle_tol,
     )

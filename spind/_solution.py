@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Union
+from typing import Tuple, Union
 
 import h5py
 import numpy as np
@@ -16,6 +16,7 @@ class Solution:
     match_rate: float = 0.0
     total_score: float = 0.0
     seed_error: float = 0.0
+    seed_pair: Tuple[int, int] = (-1, -1)
     centering_score: float = 0.0
     pair_dist: float = float("inf")
 
@@ -37,7 +38,8 @@ class Solution:
         d.attrs["seed_error"] = float(self.seed_error)
         d.attrs["centering_score"] = float(self.centering_score)
         d.attrs["pair_dist"] = float(self.pair_dist)
-        d.create_dataset("pair_ids", data=self.pair_ids)
+        d["seed_pair"] = np.array(self.seed_pair, np.int64)
+        d["pair_ids"] = self.pair_ids
         d.create_dataset("transform_matrix", data=self.transform_matrix)
         d.create_dataset("rotation_matrix", data=self.rotation_matrix)
         d.create_dataset("hkls", data=self.hkls)
@@ -52,6 +54,7 @@ class Solution:
             d.attrs["match_rate"],
             d.attrs["total_score"],
             d.attrs["seed_error"],
+            tuple(d["seed_pair"]),
             d.attrs["centering_score"],
             d.attrs["pair_dist"],
             d["pair_ids"][...],
