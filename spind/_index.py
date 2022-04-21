@@ -281,7 +281,15 @@ def index_once(
             replace=False,
         )
     else:
-        seed_pool = unindexed_peak_ids[: min(p.seed_pool_size, len(unindexed_peak_ids))]
+        if p.sort_by in ["intensity", "snr"]:
+            seed_pool = unindexed_peak_ids[
+                : min(p.seed_pool_size, len(unindexed_peak_ids))
+            ]
+            seed_pool = np.array(seed_pool, dtype=int)
+            seed_pool = seed_pool[np.argsort(peaks[seed_pool][p.sort_by])][::-1]
+        else:
+            raise ValueError()
+
     if len(seed_pool) <= 1:
         return None
     good_solutions = []
@@ -326,9 +334,8 @@ def index_once(
     best_solution.transform_matrix = best_solution.rotation_matrix.dot(
         p.transform_matrix
     )
-    # eXYZs = np.abs(
-    # best_solution.transform_matrix.dot(best_solution.rhkls.T) - qs.T
-    # ).T  # Fourier space error between peaks and predicted spots
+
+    # Fourier space error between peaks and predicted spots
     eXYZs = np.abs(best_solution.rhkls @ best_solution.transform_matrix.T - qs)
     dists = np.linalg.norm(eXYZs, axis=1)
     best_solution.pair_dist = dists[

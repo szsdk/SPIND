@@ -66,7 +66,7 @@ def simulate(
 
     Returns
     -------
-    Tuple[quat.quaternion, np.ndarray]
+    Tuple[quat.quaternion, np.ndarray[PEAKS_DTYPE]]
        Rotation quaternion and generated peaks
            ans['coor'] @ rot \\in qs
     """

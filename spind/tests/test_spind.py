@@ -53,14 +53,22 @@ def index_test_set():
 
 
 @pytest.mark.parametrize("p, hklmatcher, peaks, r", index_test_set())
-def test_index(p, hklmatcher, peaks, r):
+def test_index(p: spind.Params, hklmatcher, peaks, r: quat.quaternion):
     peaks = peaks[np.argsort(peaks["resolution"])]
     s_g = spind.eval_rot(peaks["coor"], hklmatcher, quat.as_rotation_matrix(r), p)
     solutions = spind.index(peaks, hklmatcher, p)
     assert len(solutions) == 1
-    s = solutions[0]
+    s: spind.Solution = solutions[0]
     assert np.nanmean(s.ehkls) <= (s_g.ehkls.mean() * 3)
     np.testing.assert_almost_equal(np.abs(s.hkls), np.abs(s_g.hkls))
+    np.testing.assert_allclose(
+        s.transform_matrix, s.rotation_matrix @ p.transform_matrix, atol=1e-3
+    )
+    np.testing.assert_almost_equal(
+        s.hkls @ s.transform_matrix.T, peaks["coor"], decimal=3
+    )
+    # from IPython import embed; embed(colors="neutral")
+    # exit()
 
 
 def multiple_index_test_set():
@@ -98,10 +106,9 @@ def test_multiple_index(p, hklmatcher, peaks, rs):
     solutions = spind.index(peaks, hklmatcher, p)
     # for sol in solutions:
     # print(peak_org_ids[np.array(sol.seed_pair)], len(sol.pair_ids), np.sort(peak_org_ids[sol.pair_ids]))
-    if len(solutions) != num_sol:
-        from IPython import embed
-
-        embed()
+    # if len(solutions) != num_sol:
+    # from IPython import embed
+    # embed()
     assert len(solutions) == num_sol
 
 
