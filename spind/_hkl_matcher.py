@@ -5,7 +5,7 @@ from scipy.spatial import KDTree
 from ._params import Params
 
 
-@numba.jit(boundscheck=False, cache=True)
+@numba.jit(boundscheck=False, cache=True, nopython=True)
 def get_alpha(al, bl, c, cl, d, dl, C1):  # pragma: no cover
     n = np.empty(3, np.float64)
     ans = np.empty((3, 2), np.float64)
@@ -49,12 +49,12 @@ def get_alpha(al, bl, c, cl, d, dl, C1):  # pragma: no cover
     return ans
 
 
-@numba.jit(inline="always", cache=True)
+@numba.jit(inline="always", cache=True, nopython=True)
 def my_norm(a):  # pragma: no cover
     return (a[0] ** 2 + a[1] ** 2 + a[2] ** 2) ** 0.5
 
 
-@numba.jit(boundscheck=False, cache=True)
+@numba.jit(boundscheck=False, cache=True, nopython=True)
 def get_rot(a, ap):  # pragma: no cover
     d0 = ap[0] - a[0]
     d1 = ap[1] - a[1]
@@ -122,7 +122,7 @@ def get_rot(a, ap):  # pragma: no cover
     return np.array([[r00, r01, r02], [r10, r11, r12], [r20, r21, r22]])
 
 
-@numba.jit(boundscheck=False, nogil=True, cache=True)
+@numba.jit(boundscheck=False, nogil=True, cache=True, nopython=True)
 def _hkl_match_kernel(
     q12, q1s, q1ns, q1l, q2s, q2ns, q2l, ang_s, ang_e, A0_inv, seed_hkl_tol
 ):  # pragma: no cover

@@ -86,7 +86,7 @@ def index(
     return solutions
 
 
-@numba.jit(boundscheck=False, nogil=True, cache=True)
+@numba.jit(boundscheck=False, nogil=True, cache=True, nopython=True)
 def eval_solution_kernel(
     hklss, matched_idx, eval_hkl_tol, ref_hkls, centering="P", centering_weight=0.0
 ):  # pragma: no cover
