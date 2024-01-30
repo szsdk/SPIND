@@ -1,4 +1,4 @@
-from ._hkl_matcher import gen_hkls, hkl_matcher
+from ._hkl_matcher import gen_hkls, hkl_matcher, HKLMatcher
 from ._index import eval_best_solution, eval_rot, index, index_once
 from ._params import Params, params
 from ._solution import Solution
